@@ -1,0 +1,41 @@
+/**
+ * @file Backend.cpp
+ *
+ * This is part of the DUNE DAQ Application Framework, copyright 2020.
+ * Licensing/copyright details are in the COPYING file that you should have
+ * received with this code.
+ */
+
+#include "rawdatafilelibs/Backend.hpp"
+
+#include <cstdlib>
+#include <filesystem>
+#include <new>
+#include <string>
+
+namespace dunedaq::rawdatafilelibs {
+
+Buffer
+allocate_buffer(size_t size)
+{
+  // malloc(0) may return nullptr; always allocate at least one byte so that data is non-null
+  void* memory = std::malloc(size > 0 ? size : 1); // NOLINT(cppcoreguidelines-no-malloc)
+  if (memory == nullptr) {
+    throw std::bad_alloc();
+  }
+  return Buffer{ buffer_ptr_t(static_cast<char*>(memory)), size };
+}
+
+bool
+WriterBackend::path_exists(const std::string& path) const
+{
+  return std::filesystem::exists(path);
+}
+
+void
+WriterBackend::rename_path(const std::string& from, const std::string& to)
+{
+  std::filesystem::rename(from, to);
+}
+
+} // namespace dunedaq::rawdatafilelibs
