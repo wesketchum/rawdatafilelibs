@@ -42,7 +42,12 @@ daq_add_plugin(rdfmem duneRawDataFileBackend LINK_LIBRARIES rawdatafilelibs)
 daq_add_application(rawdatafile_recover rawdatafile_recover.cxx LINK_LIBRARIES rawdatafilelibs)
 
 ##############################################################################
-# Unit Tests
+# Python bindings (the C++-mirror module _daq_rawdatafilelibs_py; the Pythonic layer is in python/)
+
+daq_add_python_bindings(*.cpp LINK_LIBRARIES rawdatafilelibs)
+
+##############################################################################
+# Unit Tests (the Python tests are in test/python, run with pytest)
 
 daq_add_unit_test(FileUtils_test LINK_LIBRARIES rawdatafilelibs)
 daq_add_unit_test(RawDataFile_test LINK_LIBRARIES rawdatafilelibs)
