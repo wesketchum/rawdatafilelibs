@@ -16,12 +16,18 @@ RawDataFile also has the method names of hdf5libs.HDF5RawDataFile (get_all_recor
 get_trh, get_source_ids, ...), so scripts can move to this API one call at a time; see "Compatibility".
 """
 
+import warnings
+
 import daqdataformats
 import detdataformats
 
 from . import _daq_rawdatafilelibs_py as _cpp
 
 __all__ = ["RawDataFile", "Record", "open", "create", "as_record_id", "make_selector"]
+
+
+def _deprecated(old, new):
+    warnings.warn(f"rawdatafilelibs RawDataFile.{old} is deprecated; use {new}", DeprecationWarning, stacklevel=3)
 
 
 def as_record_id(record_id):
@@ -233,15 +239,18 @@ class RawDataFile:
         return [(rid.number, rid.sequence) for rid in self.record_ids]
 
     def get_all_trigger_record_ids(self):
+        _deprecated("get_all_trigger_record_ids()", "get_all_record_ids() or record_ids")
         self._check_type("TriggerRecord")
         return self.get_all_record_ids()
 
     def get_all_timeslice_ids(self):
+        _deprecated("get_all_timeslice_ids()", "get_all_record_ids() or record_ids")
         self._check_type("TimeSlice")
         return self.get_all_record_ids()
 
     def get_source_ids(self, record_id):
         """The fragments' SourceIDs and the record header's, as HDF5RawDataFile returned them."""
+        _deprecated("get_source_ids()", "get_fragment_source_ids() (which leaves out the record header's SourceID)")
         record = self[record_id]
         return set(record.source_ids()) | {record.header_source_id}
 
@@ -258,6 +267,8 @@ class RawDataFile:
         return set(self[record_id].source_ids(subdetector=subdetector))
 
     def get_source_ids_for_fragtype_and_subdetector(self, record_id, fragment_type, subdetector):
+        _deprecated("get_source_ids_for_fragtype_and_subdetector()",
+                    "record.source_ids(fragment_type=..., subdetector=...)")
         return set(self[record_id].source_ids(fragment_type=fragment_type, subdetector=subdetector))
 
     def get_geo_ids(self, record_id):
@@ -268,13 +279,15 @@ class RawDataFile:
         return {geo_id.encode() for geo_id in self[record_id].geo_ids(subdetector=subdetector)}
 
     def get_frag(self, record_id, source_id):
-        """The fragment with this SourceID, or (as HDF5RawDataFile allowed) this encoded GeoID."""
+        """The fragment with this SourceID, or (deprecated, as HDF5RawDataFile allowed) this encoded GeoID."""
         record_id = as_record_id(record_id)
         if isinstance(source_id, int):
-            found = self.geo_id_map.get_source_id(detdataformats.GeoID.decode(source_id))
-            if found is None:
+            _deprecated("get_frag(record, geo_id)", "the GeoID map, geo_id_map.get_source_ids(GeoID.decode(geo_id))")
+            # as HDF5RawDataFile did: the first SourceID, even for a GeoID listed under several
+            found = self.geo_id_map.get_source_ids(detdataformats.GeoID.decode(source_id))
+            if not found:
                 raise KeyError(f"no SourceID for GeoID {source_id}")
-            source_id = found
+            source_id = found[0]
         return self.reader.get_fragment(record_id, source_id)
 
     def get_trh(self, record_id):

@@ -22,6 +22,7 @@ PYBIND11_MODULE(_daq_rawdatafilelibs_py, m)
   register_file_metadata(m);
   register_raw_data_file(m);
   register_file_utils(m);
+  register_recovery(m);
 }
 
 } // namespace dunedaq::rawdatafilelibs::python

@@ -20,6 +20,9 @@ register_raw_data_file(pybind11::module& m);
 void
 register_file_utils(pybind11::module& m);
 
+void
+register_recovery(pybind11::module& m);
+
 } // namespace dunedaq::rawdatafilelibs::python
 
 #endif // RAWDATAFILELIBS_PYBINDSRC_REGISTRATORS_HPP_
