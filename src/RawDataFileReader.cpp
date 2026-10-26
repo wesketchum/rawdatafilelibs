@@ -40,6 +40,12 @@ RawDataFileReader::RawDataFileReader(std::unique_ptr<ReaderBackend> backend, con
     }
     throw FileOpenFailed(ERS_HERE, m_path, "the backend could not open or read the file", excpt);
   }
+
+  // a stored map may break the one-SourceID-per-GeoID rule (e.g. from a faulty configuration);
+  // the file is still read, with a warning
+  if (auto shared = m_geo_id_map.get_shared_geo_ids(); !shared.empty()) {
+    ers::warning(SharedGeoIDs(ERS_HERE, m_path, shared.size(), shared.begin()->to_string()));
+  }
 }
 
 RawDataFileReader::~RawDataFileReader()

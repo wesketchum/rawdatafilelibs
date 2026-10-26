@@ -70,6 +70,12 @@ ERS_DECLARE_ISSUE(rawdatafilelibs,
                   "No raw data file backend \"" << backend << "\" could be loaded (for file " << file << ")",
                   ((std::string)backend)((std::string)file))
 
+ERS_DECLARE_ISSUE(rawdatafilelibs,
+                  SharedGeoIDs,
+                  "File " << file << " lists " << count << " GeoID(s) under more than one SourceID (e.g. " << example
+                          << "); looking up the SourceID of such a GeoID gives no answer",
+                  ((std::string)file)((size_t)count)((std::string)example))
+
 // Re-enable coverage checking LCOV_EXCL_STOP
 
 } // namespace dunedaq

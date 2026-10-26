@@ -256,6 +256,27 @@ BOOST_AUTO_TEST_CASE(SelectionAndGeoIDs)
   BOOST_REQUIRE_EQUAL(reader->get_geo_ids(RecordID{ 1 }, tpc_only).size(), 1);
 }
 
+// A stored map that lists a GeoID under two SourceIDs (which add() never builds) is still read:
+// the file opens with a warning, and only that GeoID loses its single SourceID
+BOOST_AUTO_TEST_CASE(StoredMapWithSharedGeoIDIsRead)
+{
+  auto writer = make_writer("shared_geo.rdfmem");
+  writer->write(make_trigger_record(1));
+  writer->close();
+
+  auto file = InMemoryStore::instance().find("shared_geo.rdfmem");
+  auto encoded = file->geo_id_map.to_encoded();
+  const GeoID shared = GeoID::decode(encoded.at(tpc_0).front());
+  encoded[tpc_1].push_back(shared.encode());
+  file->geo_id_map = SourceIDGeoIDMap::from_encoded(encoded);
+
+  auto reader = make_reader("shared_geo.rdfmem");
+  BOOST_REQUIRE((reader->get_geo_id_map().get_shared_geo_ids() == std::set<GeoID>{ shared }));
+  BOOST_REQUIRE(!reader->get_geo_id_map().get_source_id(shared).has_value());
+  BOOST_REQUIRE_EQUAL(reader->get_trigger_record(RecordID{ 1 }).get_fragments_ref().size(), 3);
+  reader->close();
+}
+
 BOOST_AUTO_TEST_CASE(LookupErrors)
 {
   auto writer = make_writer("errors.rdfmem");
