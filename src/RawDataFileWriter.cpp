@@ -71,6 +71,8 @@ RawDataFileWriter::~RawDataFileWriter()
     ers::error(issue);
   } catch (std::exception const& excpt) {
     ers::error(FileCloseFailed(ERS_HERE, m_current_file_name, excpt.what()));
+  } catch (...) { // NOLINT(runtime/exceptions) a backend may throw anything; a destructor must not
+    ers::error(FileCloseFailed(ERS_HERE, m_current_file_name, "unknown exception"));
   }
 }
 
@@ -171,6 +173,11 @@ RawDataFileWriter::close()
                           m_current_file_name,
                           "the backend could not finalize the file, which keeps its in-progress name",
                           excpt);
+  } catch (...) { // NOLINT(runtime/exceptions)
+    throw FileCloseFailed(
+      ERS_HERE,
+      m_current_file_name,
+      "the backend could not finalize the file (unknown exception), which keeps its in-progress name");
   }
   m_metadata = final_metadata;
 
@@ -189,6 +196,11 @@ RawDataFileWriter::close()
                             m_current_file_name,
                             "could not rename the file to " + m_file_name + ", so it keeps its in-progress name",
                             excpt);
+    } catch (...) { // NOLINT(runtime/exceptions)
+      throw FileCloseFailed(ERS_HERE,
+                            m_current_file_name,
+                            "could not rename the file to " + m_file_name +
+                              " (unknown exception), so it keeps its in-progress name");
     }
     m_current_file_name = m_file_name;
   }

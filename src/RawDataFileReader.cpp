@@ -50,6 +50,8 @@ RawDataFileReader::~RawDataFileReader()
     ers::error(issue);
   } catch (std::exception const& excpt) {
     ers::error(FileCloseFailed(ERS_HERE, m_path, excpt.what()));
+  } catch (...) { // NOLINT(runtime/exceptions) a backend may throw anything; a destructor must not
+    ers::error(FileCloseFailed(ERS_HERE, m_path, "unknown exception"));
   }
 }
 
@@ -65,6 +67,8 @@ RawDataFileReader::close()
     backend->close();
   } catch (std::exception const& excpt) {
     throw FileCloseFailed(ERS_HERE, m_path, "the backend could not close the file", excpt);
+  } catch (...) { // NOLINT(runtime/exceptions)
+    throw FileCloseFailed(ERS_HERE, m_path, "the backend could not close the file (unknown exception)");
   }
 }
 
@@ -148,8 +152,11 @@ RawDataFileReader::get_fragment(const RecordID& record_id, const SourceID& sourc
   }
 
   Buffer buffer = read_blob(record_id, source_id);
+  // the fragment's own size must cover its header and fit in the stored data
   if (buffer.size < sizeof(daqdataformats::FragmentHeader) ||
-      reinterpret_cast<const daqdataformats::FragmentHeader*>(buffer.data.get())->size > buffer.size) { // NOLINT
+      reinterpret_cast<const daqdataformats::FragmentHeader*>(buffer.data.get())->size > buffer.size || // NOLINT
+      reinterpret_cast<const daqdataformats::FragmentHeader*>(buffer.data.get())->size <                // NOLINT
+        sizeof(daqdataformats::FragmentHeader)) {
     throw FragmentMissing(ERS_HERE,
                           source_id.to_string(),
                           record_id.to_string(),
@@ -176,12 +183,18 @@ RawDataFileReader::get_trigger_record_header(const RecordID& record_id) const
   check_record_type(RecordType::kTriggerRecord);
   auto const& index = get_index(record_id);
   Buffer buffer = read_blob(record_id, index.get_header_source_id());
-  if (buffer.size < sizeof(daqdataformats::TriggerRecordHeaderData)) {
+  // the header is followed by its component requests, which must all be in the stored data
+  // (the copying constructor below reads as many as the header claims)
+  if (buffer.size < sizeof(daqdataformats::TriggerRecordHeaderData) ||
+      reinterpret_cast<const daqdataformats::TriggerRecordHeaderData*>(buffer.data.get()) // NOLINT
+          ->num_requested_components >
+        (buffer.size - sizeof(daqdataformats::TriggerRecordHeaderData)) / sizeof(daqdataformats::ComponentRequest)) {
     throw FragmentMissing(ERS_HERE,
                           index.get_header_source_id().to_string(),
                           record_id.to_string(),
                           m_path,
-                          "stored header is too small to be a TriggerRecordHeader");
+                          "stored header (" + std::to_string(buffer.size) +
+                            " bytes) is not a complete TriggerRecordHeader");
   }
   // copies the header out of the buffer, which is then freed
   return std::make_unique<daqdataformats::TriggerRecordHeader>(buffer.data.get(), true);

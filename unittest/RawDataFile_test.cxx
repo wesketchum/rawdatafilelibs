@@ -155,6 +155,28 @@ private:
   bool m_fail_rename;
 };
 
+// In-memory backends whose close() releases the file and then throws something that is not a
+// std::exception, which the generic reader and writer must still contain
+class NonStandardThrowingWriterBackend : public InMemoryWriterBackend
+{
+public:
+  void close(const FileMetadata& final_metadata) override
+  {
+    InMemoryWriterBackend::close(final_metadata);
+    throw 42; // NOLINT(hicpp-exception-baseclass)
+  }
+};
+
+class NonStandardThrowingReaderBackend : public InMemoryReaderBackend
+{
+public:
+  void close() override
+  {
+    InMemoryReaderBackend::close();
+    throw 42; // NOLINT(hicpp-exception-baseclass)
+  }
+};
+
 std::unique_ptr<RawDataFileWriter>
 make_failing_writer(const std::string& name, bool fail_close, bool fail_rename)
 {
@@ -333,6 +355,72 @@ BOOST_AUTO_TEST_CASE(CloseFailuresKeepTheInProgressName)
     BOOST_REQUIRE_EQUAL(reader->get_record_ids().size(), 1);
     reader->close();
   }
+}
+
+// A backend throwing a non-standard exception from close() never escapes as such: close() reports
+// FileCloseFailed, and the destructors (implicitly noexcept) only log, rather than terminating
+BOOST_AUTO_TEST_CASE(NonStandardCloseExceptionsAreContained)
+{
+  auto writer = std::make_unique<RawDataFileWriter>(std::make_unique<NonStandardThrowingWriterBackend>(),
+                                                    "nonstandard.rdfmem",
+                                                    make_metadata(RecordType::kTriggerRecord),
+                                                    make_geo_id_map());
+  writer->write(make_trigger_record(1));
+  BOOST_REQUIRE_THROW(writer->close(), dunedaq::rawdatafilelibs::FileCloseFailed);
+  BOOST_REQUIRE(InMemoryStore::instance().exists("nonstandard.rdfmem.writing"));
+
+  auto unclosed_writer = std::make_unique<RawDataFileWriter>(std::make_unique<NonStandardThrowingWriterBackend>(),
+                                                             "nonstandard2.rdfmem",
+                                                             make_metadata(RecordType::kTriggerRecord),
+                                                             make_geo_id_map());
+  BOOST_REQUIRE_NO_THROW(unclosed_writer.reset());
+
+  auto reader = std::make_unique<RawDataFileReader>(std::make_unique<NonStandardThrowingReaderBackend>(),
+                                                    "nonstandard.rdfmem.writing");
+  BOOST_REQUIRE_THROW(reader->close(), dunedaq::rawdatafilelibs::FileCloseFailed);
+  auto unclosed_reader = std::make_unique<RawDataFileReader>(std::make_unique<NonStandardThrowingReaderBackend>(),
+                                                             "nonstandard.rdfmem.writing");
+  BOOST_REQUIRE_NO_THROW(unclosed_reader.reset());
+}
+
+// Stored data that can't be a complete fragment or record header gives FragmentMissing, and no
+// object is ever built over too little data
+BOOST_AUTO_TEST_CASE(MalformedStoredDataIsRejected)
+{
+  auto writer = make_writer("malformed.rdfmem");
+  writer->write(make_trigger_record(1));
+  writer->close();
+  auto file = InMemoryStore::instance().find("malformed.rdfmem");
+  auto reader = make_reader("malformed.rdfmem");
+  const RecordID rid{ 1 };
+  auto header_sid = reader->get_index(rid).get_header_source_id();
+
+  auto& tpc_0_blob = file->blobs.at(std::make_pair(rid, tpc_0));
+  auto& tpc_1_blob = file->blobs.at(std::make_pair(rid, tpc_1));
+  auto& pds_0_blob = file->blobs.at(std::make_pair(rid, pds_0));
+  auto& header_blob = file->blobs.at(std::make_pair(rid, header_sid));
+
+  // shorter than a fragment header
+  tpc_0_blob.resize(sizeof(dunedaq::daqdataformats::FragmentHeader) - 1);
+  BOOST_REQUIRE_THROW(reader->get_fragment(rid, tpc_0), dunedaq::rawdatafilelibs::FragmentMissing);
+
+  // the fragment claims more data than is stored
+  tpc_1_blob.resize(tpc_1_blob.size() - 1);
+  BOOST_REQUIRE_THROW(reader->get_fragment(rid, tpc_1), dunedaq::rawdatafilelibs::FragmentMissing);
+
+  // the fragment claims to be smaller than its own header
+  reinterpret_cast<dunedaq::daqdataformats::FragmentHeader*>(pds_0_blob.data())->size = 1; // NOLINT
+  BOOST_REQUIRE_THROW(reader->get_fragment(rid, pds_0), dunedaq::rawdatafilelibs::FragmentMissing);
+
+  // the record header claims more component requests than are stored
+  reinterpret_cast<dunedaq::daqdataformats::TriggerRecordHeaderData*>(header_blob.data()) // NOLINT
+    ->num_requested_components = 1000;
+  BOOST_REQUIRE_THROW(reader->get_trigger_record_header(rid), dunedaq::rawdatafilelibs::FragmentMissing);
+  header_blob.resize(sizeof(dunedaq::daqdataformats::TriggerRecordHeaderData) - 1);
+  BOOST_REQUIRE_THROW(reader->get_trigger_record_header(rid), dunedaq::rawdatafilelibs::FragmentMissing);
+  BOOST_REQUIRE_THROW(reader->get_trigger_record(rid), dunedaq::rawdatafilelibs::FragmentMissing);
+
+  reader->close();
 }
 
 // The default (filesystem) rename_path never replaces an existing file
