@@ -116,6 +116,21 @@ public:
 /**
  * @brief Format-specific writing. Created unopened by the plugin; open() is called once.
  */
+/**
+ * @brief What a backend finds in a file left unfinished (e.g. by a crash), for recover_raw_data_file()
+ */
+struct RecoveryScan
+{
+  FileMetadata stored;                 ///< The metadata as stored; closing values are 0 where missing
+  bool has_closing_timestamp{ false }; ///< Whether the closing timestamp is stored
+  bool has_stats{ false };             ///< Whether all FileStats values are stored
+  bool has_recovery_timestamp{ false };
+  FileStats calculated_stats; ///< Recalculated from the stored data, in the format's own terms (see below)
+  size_t readable_records{ 0 };
+  size_t unreadable_records{ 0 }; ///< Records with at least one part (header or fragment) that can't be read
+  uint64_t last_modified_ms{ 0 }; ///< The file's last modification time; 0 if unknown // NOLINT(build/unsigned)
+};
+
 class WriterBackend
 {
 public:
@@ -144,6 +159,19 @@ public:
   // it fails instead, leaving both names as they were (the default uses rename_without_replacing).
   virtual bool path_exists(const std::string& path) const;
   virtual void rename_path(const std::string& from, const std::string& to);
+
+  // Recovery of a file left unfinished (used by recover_raw_data_file(); not with open()).
+  // scan_for_recovery reads the file at path without changing it. calculated_stats counts every
+  // part (record header or fragment) that can still be read, as close() would have counted it
+  // (recorded_size as stored, e.g. after compression), and total_file_size is the file's size now;
+  // a record with any unreadable part also counts in unreadable_records.
+  // store_recovery_metadata stores, in the file at path, the closing values of final_metadata that
+  // the scan found missing (closing timestamp, stats, recovery timestamp), and nothing else.
+  // Backends that can't recover files keep these defaults, which throw std::runtime_error.
+  virtual RecoveryScan scan_for_recovery(const std::string& path);
+  virtual void store_recovery_metadata(const std::string& path,
+                                       const RecoveryScan& scan,
+                                       const FileMetadata& final_metadata);
 };
 
 } // namespace dunedaq::rawdatafilelibs

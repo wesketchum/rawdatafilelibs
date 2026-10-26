@@ -84,6 +84,10 @@ public:
   void close(const FileMetadata& final_metadata) override;
   bool path_exists(const std::string& path) const override;
   void rename_path(const std::string& from, const std::string& to) override;
+  RecoveryScan scan_for_recovery(const std::string& path) override;
+  void store_recovery_metadata(const std::string& path,
+                               const RecoveryScan& scan,
+                               const FileMetadata& final_metadata) override;
 
 private:
   std::shared_ptr<InMemoryFile> m_file;

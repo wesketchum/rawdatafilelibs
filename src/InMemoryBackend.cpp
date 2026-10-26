@@ -211,4 +211,58 @@ InMemoryWriterBackend::rename_path(const std::string& from, const std::string& t
   InMemoryStore::instance().rename(from, to);
 }
 
+RecoveryScan
+InMemoryWriterBackend::scan_for_recovery(const std::string& path)
+{
+  auto file = InMemoryStore::instance().find(path);
+  if (file == nullptr) {
+    throw std::runtime_error("no in-memory file named " + path);
+  }
+  RecoveryScan scan;
+  scan.stored = file->metadata;
+  scan.has_closing_timestamp = (file->metadata.closing_timestamp_ms != 0);
+  scan.has_stats = (file->metadata.stats != FileStats{});
+  scan.has_recovery_timestamp = (file->metadata.recovery_timestamp_ms != 0);
+  for (auto const& [record_id, index] : file->indices) {
+    bool complete = true;
+    auto count = [&](const daqdataformats::SourceID& source_id) {
+      auto blob = file->blobs.find(std::make_pair(record_id, source_id));
+      if (blob == file->blobs.end()) {
+        complete = false;
+        return;
+      }
+      scan.calculated_stats.recorded_size += blob->second.size();
+      scan.calculated_stats.uncompressed_raw_data_size += blob->second.size();
+      scan.calculated_stats.total_file_size += blob->second.size();
+    };
+    count(index.get_header_source_id());
+    for (auto const& source_id : index.get_fragment_source_ids()) {
+      count(source_id);
+    }
+    ++(complete ? scan.readable_records : scan.unreadable_records);
+  }
+  return scan;
+}
+
+void
+InMemoryWriterBackend::store_recovery_metadata(const std::string& path,
+                                               const RecoveryScan& scan,
+                                               const FileMetadata& final_metadata)
+{
+  auto file = InMemoryStore::instance().find(path);
+  if (file == nullptr) {
+    throw std::runtime_error("no in-memory file named " + path);
+  }
+  if (!scan.has_closing_timestamp) {
+    file->metadata.closing_timestamp_ms = final_metadata.closing_timestamp_ms;
+  }
+  if (!scan.has_stats) {
+    file->metadata.stats = final_metadata.stats;
+  }
+  if (!scan.has_recovery_timestamp) {
+    file->metadata.recovery_timestamp_ms = final_metadata.recovery_timestamp_ms;
+  }
+  file->closed = true;
+}
+
 } // namespace dunedaq::rawdatafilelibs

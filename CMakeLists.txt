@@ -28,6 +28,7 @@ daq_add_library(Backend.cpp
                 InMemoryBackend.cpp
                 RawDataFileReader.cpp
                 RawDataFileWriter.cpp
+                Recovery.cpp
                 LINK_LIBRARIES ${RAWDATAFILELIBS_DEPENDENCIES})
 
 ##############################################################################
@@ -36,12 +37,19 @@ daq_add_library(Backend.cpp
 daq_add_plugin(rdfmem duneRawDataFileBackend LINK_LIBRARIES rawdatafilelibs)
 
 ##############################################################################
+# Applications
+
+daq_add_application(rawdatafile_recover rawdatafile_recover.cxx LINK_LIBRARIES rawdatafilelibs)
+
+##############################################################################
 # Unit Tests
 
 daq_add_unit_test(FileUtils_test LINK_LIBRARIES rawdatafilelibs)
 daq_add_unit_test(RawDataFile_test LINK_LIBRARIES rawdatafilelibs)
 daq_add_unit_test(BackendFactory_test LINK_LIBRARIES rawdatafilelibs)
 add_dependencies(BackendFactory_test rawdatafilelibs_rdfmem_duneRawDataFileBackend)
+daq_add_unit_test(Recovery_test LINK_LIBRARIES rawdatafilelibs)
+add_dependencies(Recovery_test rawdatafilelibs_rdfmem_duneRawDataFileBackend)
 
 ##############################################################################
 

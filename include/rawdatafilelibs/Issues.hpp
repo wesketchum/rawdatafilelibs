@@ -71,6 +71,11 @@ ERS_DECLARE_ISSUE(rawdatafilelibs,
                   ((std::string)backend)((std::string)file))
 
 ERS_DECLARE_ISSUE(rawdatafilelibs,
+                  RecoveryFailed,
+                  "Unable to recover file " << file << ": " << message,
+                  ((std::string)file)((std::string)message))
+
+ERS_DECLARE_ISSUE(rawdatafilelibs,
                   SharedGeoIDs,
                   "File " << file << " lists " << count << " GeoID(s) under more than one SourceID (e.g. " << example
                           << "); looking up the SourceID of such a GeoID gives no answer",

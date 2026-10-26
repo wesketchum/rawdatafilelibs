@@ -54,6 +54,9 @@ struct FileMetadata
   RecordType record_type{ RecordType::kUnknown };
   uint64_t creation_timestamp_ms{ 0 }; ///< Milliseconds since the epoch; the writer sets it if left at 0 // NOLINT
   uint64_t closing_timestamp_ms{ 0 };  ///< Milliseconds since the epoch; 0 while the file is open // NOLINT
+  uint64_t recovery_timestamp_ms{
+    0
+  }; ///< When an unfinished file was recovered (recover_raw_data_file()); 0 if never // NOLINT
   std::string operational_environment;
   std::string offline_data_stream;
   bool run_is_for_test_purposes{ false };

@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <new>
+#include <stdexcept>
 #include <string>
 
 namespace dunedaq::rawdatafilelibs {
@@ -37,6 +38,18 @@ void
 WriterBackend::rename_path(const std::string& from, const std::string& to)
 {
   rename_without_replacing(from, to);
+}
+
+RecoveryScan
+WriterBackend::scan_for_recovery(const std::string& path)
+{
+  throw std::runtime_error("this file format's backend can't recover unfinished files (" + path + ")");
+}
+
+void
+WriterBackend::store_recovery_metadata(const std::string& path, const RecoveryScan&, const FileMetadata&)
+{
+  throw std::runtime_error("this file format's backend can't recover unfinished files (" + path + ")");
 }
 
 } // namespace dunedaq::rawdatafilelibs
