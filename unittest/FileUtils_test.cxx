@@ -12,11 +12,38 @@
 
 #include "boost/test/unit_test.hpp"
 
+#include <unistd.h>
+
 #include <ctime>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
+#include <system_error>
 
 using namespace dunedaq::rawdatafilelibs;
+
+namespace {
+std::string
+temp_file_name(const std::string& stem)
+{
+  return (std::filesystem::temp_directory_path() / (stem + std::to_string(getpid()))).string();
+}
+
+void
+write_text_file(const std::string& name, const std::string& contents)
+{
+  std::ofstream file(name);
+  file << contents;
+}
+
+std::string
+read_text_file(const std::string& name)
+{
+  std::ifstream file(name);
+  return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+}
+} // namespace
 
 BOOST_AUTO_TEST_SUITE(FileUtils_test)
 
@@ -55,6 +82,32 @@ BOOST_AUTO_TEST_CASE(FreeSpace)
   BOOST_REQUIRE(free_space.has_value());
   BOOST_REQUIRE(*free_space > 0);
   BOOST_REQUIRE(!get_free_space("/this/path/does/not/exist/at/all").has_value());
+}
+
+// Called directly, with no prior existence check, the rename still never replaces a file
+BOOST_AUTO_TEST_CASE(RenameWithoutReplacing)
+{
+  const std::string from = temp_file_name("rdf_rename_from");
+  const std::string to = temp_file_name("rdf_rename_to");
+  write_text_file(from, "new");
+  write_text_file(to, "existing");
+
+  try {
+    rename_without_replacing(from, to);
+    BOOST_FAIL("rename_without_replacing replaced an existing file");
+  } catch (std::system_error const& excpt) {
+    BOOST_REQUIRE(excpt.code() == std::errc::file_exists);
+  }
+  BOOST_REQUIRE_EQUAL(read_text_file(from), "new");
+  BOOST_REQUIRE_EQUAL(read_text_file(to), "existing");
+
+  std::filesystem::remove(to);
+  BOOST_REQUIRE_NO_THROW(rename_without_replacing(from, to));
+  BOOST_REQUIRE(!std::filesystem::exists(from));
+  BOOST_REQUIRE_EQUAL(read_text_file(to), "new");
+  std::filesystem::remove(to);
+
+  BOOST_REQUIRE_THROW(rename_without_replacing(from, to), std::system_error); // from no longer exists
 }
 
 BOOST_AUTO_TEST_SUITE_END()

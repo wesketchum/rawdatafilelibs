@@ -15,10 +15,16 @@
 
 #include "boost/test/unit_test.hpp"
 
+#include <unistd.h>
+
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <set>
+#include <stdexcept>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -115,6 +121,47 @@ same_bytes(const Fragment& lhs, const Fragment& rhs)
 {
   return lhs.get_size() == rhs.get_size() &&
          std::memcmp(lhs.get_storage_location(), rhs.get_storage_location(), lhs.get_size()) == 0;
+}
+
+// An in-memory backend that can fail while finalizing the file (after releasing it, as the
+// interface requires) or while renaming it, to exercise the writer's close() failure paths
+class FailingWriterBackend : public InMemoryWriterBackend
+{
+public:
+  FailingWriterBackend(bool fail_close, bool fail_rename)
+    : m_fail_close(fail_close)
+    , m_fail_rename(fail_rename)
+  {
+  }
+
+  void close(const FileMetadata& final_metadata) override
+  {
+    InMemoryWriterBackend::close(final_metadata);
+    if (m_fail_close) {
+      throw std::runtime_error("simulated failure while finalizing");
+    }
+  }
+
+  void rename_path(const std::string& from, const std::string& to) override
+  {
+    if (m_fail_rename) {
+      throw std::runtime_error("simulated failure while renaming");
+    }
+    InMemoryWriterBackend::rename_path(from, to);
+  }
+
+private:
+  bool m_fail_close;
+  bool m_fail_rename;
+};
+
+std::unique_ptr<RawDataFileWriter>
+make_failing_writer(const std::string& name, bool fail_close, bool fail_rename)
+{
+  return std::make_unique<RawDataFileWriter>(std::make_unique<FailingWriterBackend>(fail_close, fail_rename),
+                                             name,
+                                             make_metadata(RecordType::kTriggerRecord),
+                                             make_geo_id_map());
 }
 
 struct StoreCleaner
@@ -261,6 +308,53 @@ BOOST_AUTO_TEST_CASE(ExistingFilesAreNeverReused)
   BOOST_REQUIRE_THROW(writer->close(), dunedaq::rawdatafilelibs::FileCloseFailed);
   BOOST_REQUIRE(store.exists("race.rdfmem.writing"));
   BOOST_REQUIRE_NO_THROW(writer->close()); // not retried
+}
+
+// A close() failure is reported once as FileCloseFailed, is not retried, and leaves the file
+// under its in-progress name for recovery, whether finalizing or renaming fails
+BOOST_AUTO_TEST_CASE(CloseFailuresKeepTheInProgressName)
+{
+  auto& store = InMemoryStore::instance();
+  for (auto [fail_close, fail_rename] : { std::pair{ true, false }, std::pair{ false, true } }) {
+    BOOST_TEST_INFO("fail_close " << fail_close << ", fail_rename " << fail_rename);
+    store.clear();
+    auto writer = make_failing_writer("failing.rdfmem", fail_close, fail_rename);
+    writer->write(make_trigger_record(1));
+
+    BOOST_REQUIRE_THROW(writer->close(), dunedaq::rawdatafilelibs::FileCloseFailed);
+    BOOST_REQUIRE(!writer->is_open());
+    BOOST_REQUIRE_EQUAL(writer->get_current_file_name(), "failing.rdfmem.writing");
+    BOOST_REQUIRE(store.exists("failing.rdfmem.writing"));
+    BOOST_REQUIRE(!store.exists("failing.rdfmem"));
+    BOOST_REQUIRE_NO_THROW(writer->close()); // not retried
+
+    // the in-progress file holds the record
+    auto reader = make_reader("failing.rdfmem.writing");
+    BOOST_REQUIRE_EQUAL(reader->get_record_ids().size(), 1);
+    reader->close();
+  }
+}
+
+// The default (filesystem) rename_path never replaces an existing file
+BOOST_AUTO_TEST_CASE(DefaultRenamePathNeverReplaces)
+{
+  const std::string dir = std::filesystem::temp_directory_path().string();
+  const std::string from = dir + "/rdf_rename_path_from" + std::to_string(getpid());
+  const std::string to = dir + "/rdf_rename_path_to" + std::to_string(getpid());
+  {
+    std::ofstream(from) << "new";
+  }
+  {
+    std::ofstream(to) << "existing";
+  }
+
+  InMemoryWriterBackend backend;
+  BOOST_REQUIRE_THROW(backend.WriterBackend::rename_path(from, to), std::system_error);
+  BOOST_REQUIRE(std::filesystem::exists(from));
+  BOOST_REQUIRE_EQUAL(std::filesystem::file_size(to), 8); // "existing"
+
+  std::filesystem::remove(from);
+  std::filesystem::remove(to);
 }
 
 BOOST_AUTO_TEST_CASE(WriteReadTimeSlices)

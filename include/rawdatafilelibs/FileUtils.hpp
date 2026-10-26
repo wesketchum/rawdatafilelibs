@@ -18,6 +18,13 @@
 
 namespace dunedaq::rawdatafilelibs {
 
+// Renames a file without ever replacing an existing file at the new name, atomically (so a file
+// that appears at the new name concurrently is not replaced either). Uses renameat2 with
+// RENAME_NOREPLACE, or link() + unlink() on filesystems without it (e.g. NFS). Throws
+// std::system_error (code EEXIST if the new name exists); on failure the file keeps its old name.
+void
+rename_without_replacing(const std::string& from, const std::string& to);
+
 // Bytes available to unprivileged users on the filesystem holding path; nullopt if path is invalid
 std::optional<size_t>
 get_free_space(const std::string& path);

@@ -140,6 +140,8 @@ public:
 
   // Storage operations that the generic writer uses for the in-progress file name.
   // The defaults act on the filesystem; backends that don't store files override them.
+  // rename_path must never replace an existing file at `to`, even one that appears concurrently:
+  // it fails instead, leaving both names as they were (the default uses rename_without_replacing).
   virtual bool path_exists(const std::string& path) const;
   virtual void rename_path(const std::string& from, const std::string& to);
 };

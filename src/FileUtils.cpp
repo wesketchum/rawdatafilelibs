@@ -8,13 +8,39 @@
 
 #include "rawdatafilelibs/FileUtils.hpp"
 
+#include <fcntl.h>
 #include <sys/statvfs.h>
+#include <unistd.h>
 
+#include <cerrno>
+#include <cstdio>
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <system_error>
 
 namespace dunedaq::rawdatafilelibs {
+
+void
+rename_without_replacing(const std::string& from, const std::string& to)
+{
+  if (::renameat2(AT_FDCWD, from.c_str(), AT_FDCWD, to.c_str(), RENAME_NOREPLACE) == 0) {
+    return;
+  }
+  int error = errno;
+  if (error == EINVAL || error == ENOSYS || error == ENOTSUP) {
+    // the filesystem doesn't support RENAME_NOREPLACE; link() also fails if the new name exists
+    if (::link(from.c_str(), to.c_str()) == 0) {
+      if (::unlink(from.c_str()) != 0) {
+        throw std::system_error(
+          errno, std::generic_category(), "renamed " + from + " to " + to + " but could not remove the old name");
+      }
+      return;
+    }
+    error = errno;
+  }
+  throw std::system_error(error, std::generic_category(), "could not rename " + from + " to " + to);
+}
 
 std::optional<size_t>
 get_free_space(const std::string& path)

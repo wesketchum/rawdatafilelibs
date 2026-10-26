@@ -7,6 +7,7 @@
  */
 
 #include "rawdatafilelibs/Backend.hpp"
+#include "rawdatafilelibs/FileUtils.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -35,7 +36,7 @@ WriterBackend::path_exists(const std::string& path) const
 void
 WriterBackend::rename_path(const std::string& from, const std::string& to)
 {
-  std::filesystem::rename(from, to);
+  rename_without_replacing(from, to);
 }
 
 } // namespace dunedaq::rawdatafilelibs

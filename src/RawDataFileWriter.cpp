@@ -175,6 +175,7 @@ RawDataFileWriter::close()
   m_metadata = final_metadata;
 
   if (m_current_file_name != m_file_name) {
+    // this check only gives a clearer message; rename_path itself never replaces an existing file
     if (m_backend->path_exists(m_file_name)) {
       throw FileCloseFailed(ERS_HERE,
                             m_current_file_name,
@@ -184,7 +185,10 @@ RawDataFileWriter::close()
     try {
       m_backend->rename_path(m_current_file_name, m_file_name);
     } catch (std::exception const& excpt) {
-      throw FileCloseFailed(ERS_HERE, m_current_file_name, "could not rename the file to " + m_file_name, excpt);
+      throw FileCloseFailed(ERS_HERE,
+                            m_current_file_name,
+                            "could not rename the file to " + m_file_name + ", so it keeps its in-progress name",
+                            excpt);
     }
     m_current_file_name = m_file_name;
   }
