@@ -84,6 +84,48 @@ def test_existing_files_are_never_reused():
         rawdatafilelibs.create("taken.rdfmem", "TimeSlice")
 
 
+def test_close_failure_does_not_hide_the_with_block_exception():
+    # a file that appears at the final name while writing makes close() fail
+    with pytest.raises(ValueError, match="from the with block") as caught:
+        with rawdatafilelibs.create("hidden.rdfmem", "TimeSlice"):
+            rawdatafilelibs.create("hidden.rdfmem", "TimeSlice", inprogress_suffix="").close()
+            raise ValueError("from the with block")
+    assert any("closing the file also failed" in note for note in caught.value.__notes__)
+    assert rawdatafilelibs.in_memory_file_exists("hidden.rdfmem.writing")
+
+    # with no exception in the block, the close failure itself is raised
+    with pytest.raises(RuntimeError, match="already exists"):
+        with rawdatafilelibs.create("plain.rdfmem", "TimeSlice"):
+            rawdatafilelibs.create("plain.rdfmem", "TimeSlice", inprogress_suffix="").close()
+
+
+def test_pythonic_reader_close_failure_does_not_hide_the_with_block_exception():
+    rawdatafilelibs.create("reader_exit.rdfmem", "TimeSlice").close()
+
+    class FailingClose:
+        """The real reader, except that close() fails after closing it."""
+
+        def __init__(self, reader):
+            self.reader = reader
+
+        def __getattr__(self, name):
+            return getattr(self.reader, name)
+
+        def close(self):
+            self.reader.close()
+            raise RuntimeError("simulated close failure")
+
+    with pytest.raises(KeyError) as caught:
+        with rawdatafilelibs.open("reader_exit.rdfmem") as f:
+            f.reader = FailingClose(f.reader)
+            f[(1, 0)]
+    assert any("simulated close failure" in note for note in caught.value.__notes__)
+
+    with pytest.raises(RuntimeError, match="simulated close failure"):
+        with rawdatafilelibs.open("reader_exit.rdfmem") as f:
+            f.reader = FailingClose(f.reader)
+
+
 def test_bad_arguments():
     with pytest.raises(TypeError):
         rawdatafilelibs.create("bad.rdfmem", "TriggerRecord", no_such_field=1)

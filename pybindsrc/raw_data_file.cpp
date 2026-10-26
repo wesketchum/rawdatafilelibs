@@ -18,12 +18,36 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <exception>
 #include <memory>
 #include <string>
 
 namespace py = pybind11;
 
 namespace dunedaq::rawdatafilelibs::python {
+
+namespace {
+// __exit__ for a "with" block: closes the file. A close failure is raised as usual, unless the
+// block itself raised: then the block's exception is kept (Python re-raises it when __exit__
+// returns False) and the close failure is attached to it as a note instead of replacing it.
+template<typename File>
+bool
+close_on_exit(File& file, const py::object& exc_type, const py::object& exc_value)
+{
+  if (exc_type.is_none()) {
+    file.close();
+    return false;
+  }
+  try {
+    file.close();
+  } catch (std::exception const& excpt) {
+    if (py::hasattr(exc_value, "add_note")) {
+      exc_value.attr("add_note")(std::string("closing the file also failed: ") + excpt.what());
+    }
+  }
+  return false;
+}
+} // namespace
 
 void
 register_raw_data_file(py::module& m)
@@ -69,7 +93,10 @@ register_raw_data_file(py::module& m)
     .def("close", &RawDataFileReader::close)
     .def("is_open", &RawDataFileReader::is_open)
     .def("__enter__", [](RawDataFileReader& self) -> RawDataFileReader& { return self; })
-    .def("__exit__", [](RawDataFileReader& self, const py::args&) { self.close(); })
+    .def("__exit__",
+         [](RawDataFileReader& self, const py::object& exc_type, const py::object& exc_value, const py::object&) {
+           return close_on_exit(self, exc_type, exc_value);
+         })
     .def("__repr__",
          [](const RawDataFileReader& self) { return "<rawdatafilelibs::RawDataFileReader " + self.get_path() + ">"; });
 
@@ -88,7 +115,10 @@ register_raw_data_file(py::module& m)
     .def("close", &RawDataFileWriter::close)
     .def("is_open", &RawDataFileWriter::is_open)
     .def("__enter__", [](RawDataFileWriter& self) -> RawDataFileWriter& { return self; })
-    .def("__exit__", [](RawDataFileWriter& self, const py::args&) { self.close(); })
+    .def("__exit__",
+         [](RawDataFileWriter& self, const py::object& exc_type, const py::object& exc_value, const py::object&) {
+           return close_on_exit(self, exc_type, exc_value);
+         })
     .def("__repr__", [](const RawDataFileWriter& self) {
       return "<rawdatafilelibs::RawDataFileWriter " + self.get_current_file_name() + ">";
     });

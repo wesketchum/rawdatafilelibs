@@ -174,8 +174,17 @@ class RawDataFile:
     def __enter__(self):
         return self
 
-    def __exit__(self, *exc_info):
-        self.close()
+    def __exit__(self, exc_type, exc_value, traceback):
+        # A close failure is raised as usual, unless the with-block itself raised: then that
+        # exception is kept and the close failure is attached to it as a note instead.
+        if exc_type is None:
+            self.close()
+            return False
+        try:
+            self.close()
+        except Exception as close_error:  # noqa: BLE001 - reported on the block's exception
+            exc_value.add_note(f"closing the file also failed: {close_error}")
+        return False
 
     # ---- records ----
 
