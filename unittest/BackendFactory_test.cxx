@@ -31,6 +31,9 @@ BOOST_AUTO_TEST_CASE(BackendNameFromPath)
 {
   BOOST_REQUIRE_EQUAL(backend_name_for_path("/data/run1_0000_app.hdf5"), "hdf5");
   BOOST_REQUIRE_EQUAL(backend_name_for_path("/data/run1_0000_app.hdf5.writing"), "hdf5");
+  BOOST_REQUIRE_EQUAL(backend_name_for_path("/data/run1_0000_app.hdf5.copied"), "hdf5");
+  BOOST_REQUIRE_EQUAL(backend_name_for_path("/data/no_extension.copied"), "");
+  BOOST_REQUIRE_EQUAL(backend_name_for_path("/data/.copied"), ""); // nothing before the suffix: a hidden file, as before
   BOOST_REQUIRE_EQUAL(backend_name_for_path("run1.v2.rdfmem"), "rdfmem");
   BOOST_REQUIRE_EQUAL(backend_name_for_path("/data/no_extension"), "");
   BOOST_REQUIRE_EQUAL(backend_name_for_path("/data.dir/no_extension"), "");

@@ -15,11 +15,27 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace dunedaq::rawdatafilelibs {
 
 namespace {
 const std::string s_plugin_type = "duneRawDataFileBackend"; // NOLINT(cert-err58-cpp)
+
+// Suffixes that other tools add to finished files, ignored when choosing the backend
+const std::vector<std::string> s_ignored_suffixes = { ".copied" }; // NOLINT(cert-err58-cpp)
+
+// Removes suffix from the end of name, if name ends with it and has something before it
+bool
+remove_suffix(std::string& name, const std::string& suffix)
+{
+  if (suffix.empty() || name.size() <= suffix.size() ||
+      name.compare(name.size() - suffix.size(), suffix.size(), suffix) != 0) {
+    return false;
+  }
+  name.resize(name.size() - suffix.size());
+  return true;
+}
 
 cet::BasicPluginFactory&
 reader_factory()
@@ -40,9 +56,11 @@ std::string
 backend_name_for_path(const std::string& path, const std::string& inprogress_suffix)
 {
   std::string name = std::filesystem::path(path).filename().string();
-  if (!inprogress_suffix.empty() && name.size() > inprogress_suffix.size() &&
-      name.compare(name.size() - inprogress_suffix.size(), inprogress_suffix.size(), inprogress_suffix) == 0) {
-    name.resize(name.size() - inprogress_suffix.size());
+  remove_suffix(name, inprogress_suffix);
+  for (auto const& suffix : s_ignored_suffixes) {
+    if (remove_suffix(name, suffix)) {
+      break;
+    }
   }
   auto dot_pos = name.rfind('.');
   if (dot_pos == std::string::npos || dot_pos == 0 || dot_pos + 1 == name.size()) {

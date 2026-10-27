@@ -23,7 +23,7 @@ for (auto const& record_id : reader->get_record_ids()) {
 }
 ```
 
-- `open_raw_data_file()` picks the backend from the file extension: `.hdf5` loads the `hdf5` backend plugin. An in-progress `.writing` suffix is ignored when choosing.
+- `open_raw_data_file()` picks the backend from the file extension: `.hdf5` loads the `hdf5` backend plugin. An in-progress `.writing` suffix, and the `.copied` suffix that the file transfer system adds, are ignored when choosing (so `x.hdf5.copied` is read as HDF5). For any other name, pass the backend name explicitly.
 - Each record's `daqdataformats::RecordIndex` (header SourceID, plus the fragment SourceIDs with their fragment types and subdetectors) is the source of truth for what the record contains. Fragments are found by SourceID, never by format-specific locations.
 - Errors are ERS issues from `rawdatafilelibs/Issues.hpp`:
   - `RecordIDNotFound`: the record isn't in the file.
