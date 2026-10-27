@@ -164,7 +164,9 @@ public:
   // scan_for_recovery reads the file at path without changing it. calculated_stats counts every
   // part (record header or fragment) that can still be read, as close() would have counted it
   // (recorded_size as stored, e.g. after compression), and total_file_size is the file's size now;
-  // a record with any unreadable part also counts in unreadable_records.
+  // a record with any unreadable part also counts in unreadable_records. It must throw if it can't
+  // tell which records the file holds, rather than report a file with no records: recovery then
+  // fails and the file is left untouched.
   // store_recovery_metadata stores, in the file at path, the closing values of final_metadata that
   // the scan found missing (closing timestamp, stats, recovery timestamp), and nothing else.
   // Backends that can't recover files keep these defaults, which throw std::runtime_error.

@@ -67,7 +67,9 @@ ERS_DECLARE_ISSUE(rawdatafilelibs,
 
 ERS_DECLARE_ISSUE(rawdatafilelibs,
                   BackendNotAvailable,
-                  "No raw data file backend \"" << backend << "\" could be loaded (for file " << file << ")",
+                  "No raw data file backend \"" << backend << "\" could be loaded (for file " << file
+                                                 << "): no duneRawDataFileBackend plugin of that name was found on"
+                                                 << " CET_PLUGIN_PATH. Is the package that provides it set up?",
                   ((std::string)backend)((std::string)file))
 
 ERS_DECLARE_ISSUE(rawdatafilelibs,
