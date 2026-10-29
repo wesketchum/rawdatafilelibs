@@ -2,6 +2,8 @@
 
 Format-independent reading and writing of DUNE DAQ raw data files (files of TriggerRecords or TimeSlices).
 
+The design, class structure and guarantees are described in detail in [DESIGN.md](DESIGN.md).
+
 The on-disk format is provided by a **backend** plugin. HDF5 (from `hdf5libs`) is the main format. This package also contains an in-memory backend for tests. Code that reads or writes raw data files uses the classes here and never needs to know which format a file is in.
 
 ## Reading
