@@ -182,6 +182,22 @@ InMemoryWriterBackend::write_record(const daqdataformats::RecordIndex& index,
   m_file->indices[record_id] = index;
 }
 
+void
+InMemoryWriterBackend::discard_record(const daqdataformats::RecordID& record_id)
+{
+  m_file->indices.erase(record_id);
+  for (auto iter = m_file->blobs.begin(); iter != m_file->blobs.end();) {
+    if (iter->first.first == record_id) {
+      m_stats.recorded_size -= iter->second.size();
+      m_stats.uncompressed_raw_data_size -= iter->second.size();
+      m_stats.total_file_size -= iter->second.size();
+      iter = m_file->blobs.erase(iter);
+    } else {
+      ++iter;
+    }
+  }
+}
+
 FileStats
 InMemoryWriterBackend::get_stats() const
 {

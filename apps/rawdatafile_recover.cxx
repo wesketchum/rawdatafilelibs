@@ -17,6 +17,7 @@
 
 #include "ers/ers.hpp"
 
+#include <exception>
 #include <iostream>
 #include <string>
 
@@ -63,6 +64,12 @@ main(int argc, char** argv)
     std::cout << dunedaq::rawdatafilelibs::to_string(report);
   } catch (ers::Issue const& issue) {
     ers::error(issue);
+    return 2;
+  } catch (std::exception const& excpt) {
+    std::cerr << "rawdatafile_recover: " << excpt.what() << std::endl;
+    return 2;
+  } catch (...) { // NOLINT(runtime/exceptions)
+    std::cerr << "rawdatafile_recover: unknown exception" << std::endl;
     return 2;
   }
   return 0;

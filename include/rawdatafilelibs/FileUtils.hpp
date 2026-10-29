@@ -22,6 +22,8 @@ namespace dunedaq::rawdatafilelibs {
 // that appears at the new name concurrently is not replaced either). Uses renameat2 with
 // RENAME_NOREPLACE, or link() + unlink() on filesystems without it (e.g. NFS). Throws
 // std::system_error (code EEXIST if the new name exists); on failure the file keeps its old name.
+// (With link() + unlink(), if neither the old nor the new name can then be removed, the file is
+// left under both names, and the exception says so.)
 void
 rename_without_replacing(const std::string& from, const std::string& to);
 

@@ -53,7 +53,9 @@ public:
   RawDataFileWriter(RawDataFileWriter&&) = delete;
   RawDataFileWriter& operator=(RawDataFileWriter&&) = delete;
 
-  // Throw RecordTypeMismatch, RecordAlreadyExists, FileClosed or FileWriteFailed
+  // Throw RecordTypeMismatch, RecordAlreadyExists, DuplicateSourceID (nothing written), FileClosed or
+  // FileWriteFailed. After FileWriteFailed, whatever the backend stored of the record is removed again
+  // if the backend supports that (the issue says whether it was), so the record can be written again.
   void write(const daqdataformats::TriggerRecord& trigger_record);
   void write(const daqdataformats::TimeSlice& timeslice);
 
@@ -68,7 +70,7 @@ public:
   // The name on storage: the in-progress name while open, the final name once closed successfully
   const std::string& get_current_file_name() const noexcept { return m_current_file_name; }
 
-  // For format-specific extras
+  // For format-specific extras; throws FileClosed after close()
   WriterBackend& get_backend() const;
 
   // Finalizes the file and renames it to its final name. May throw FileCloseFailed, in which

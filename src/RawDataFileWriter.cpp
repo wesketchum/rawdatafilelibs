@@ -13,6 +13,7 @@
 
 #include <chrono>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -79,6 +80,9 @@ RawDataFileWriter::~RawDataFileWriter()
 WriterBackend&
 RawDataFileWriter::get_backend() const
 {
+  if (!is_open()) {
+    throw FileClosed(ERS_HERE, m_current_file_name);
+  }
   return *m_backend;
 }
 
@@ -147,11 +151,27 @@ RawDataFileWriter::write_record(const daqdataformats::RecordIndex& index,
   if (m_backend->record_exists(record_id)) {
     throw RecordAlreadyExists(ERS_HERE, record_id.to_string(), m_current_file_name);
   }
+  // one part per SourceID: the index and the backends find each part by its SourceID
+  std::set<daqdataformats::SourceID> source_ids{ header.source_id };
+  for (auto const& fragment : fragments) {
+    if (!source_ids.insert(fragment.source_id).second) {
+      throw DuplicateSourceID(ERS_HERE, fragment.source_id.to_string(), record_id.to_string(), m_current_file_name);
+    }
+  }
 
   try {
     m_backend->write_record(index, header, fragments);
   } catch (std::exception const& excpt) {
-    throw FileWriteFailed(ERS_HERE, record_id.to_string(), m_current_file_name, excpt);
+    // remove what was stored, so that the record can be written again
+    std::string outcome = "the partly written record was removed";
+    try {
+      m_backend->discard_record(record_id);
+    } catch (std::exception const& discard_excpt) {
+      outcome = std::string("the record may remain partly stored (") + discard_excpt.what() + ")";
+    } catch (...) { // NOLINT(runtime/exceptions)
+      outcome = "the record may remain partly stored (unknown exception)";
+    }
+    throw FileWriteFailed(ERS_HERE, record_id.to_string(), m_current_file_name, outcome, excpt);
   }
 }
 

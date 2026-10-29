@@ -44,8 +44,9 @@ struct RecoveryReport
  * what would be done.
  *
  * Throws RecoveryFailed if the backend can't scan or update the file, or if the final name is
- * already taken (checked before anything is stored, so the file is then left untouched). The
- * backend defaults to the one named by the file's extension.
+ * already taken (checked before anything is stored, so the file is then left untouched), and
+ * BackendNotAvailable if the backend's plugin can't be loaded. The backend defaults to the one
+ * named by the file's extension.
  */
 RecoveryReport
 recover_raw_data_file(const std::string& path,

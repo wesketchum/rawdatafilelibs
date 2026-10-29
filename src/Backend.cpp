@@ -40,6 +40,13 @@ WriterBackend::rename_path(const std::string& from, const std::string& to)
   rename_without_replacing(from, to);
 }
 
+void
+WriterBackend::discard_record(const daqdataformats::RecordID& record_id)
+{
+  throw std::runtime_error("this file format's backend can't remove a partly written record (" + record_id.to_string() +
+                           ")");
+}
+
 RecoveryScan
 WriterBackend::scan_for_recovery(const std::string& path)
 {
