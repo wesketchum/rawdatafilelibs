@@ -31,11 +31,19 @@ rename_without_replacing(const std::string& from, const std::string& to)
   if (error == EINVAL || error == ENOSYS || error == ENOTSUP) {
     // the filesystem doesn't support RENAME_NOREPLACE; link() also fails if the new name exists
     if (::link(from.c_str(), to.c_str()) == 0) {
-      if (::unlink(from.c_str()) != 0) {
-        throw std::system_error(
-          errno, std::generic_category(), "renamed " + from + " to " + to + " but could not remove the old name");
+      if (::unlink(from.c_str()) == 0) {
+        return;
       }
-      return;
+      // keep one name: remove the new link again, so the file stays (only) under its old name
+      error = errno;
+      if (::unlink(to.c_str()) != 0) {
+        throw std::system_error(error,
+                                std::generic_category(),
+                                "linked " + from + " to " + to +
+                                  " but could remove neither name, so the file is now under both");
+      }
+      throw std::system_error(
+        error, std::generic_category(), "could not rename " + from + " to " + to + " (the old name could not be removed)");
     }
     error = errno;
   }

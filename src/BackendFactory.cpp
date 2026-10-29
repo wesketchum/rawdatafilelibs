@@ -56,10 +56,12 @@ std::string
 backend_name_for_path(const std::string& path, const std::string& inprogress_suffix)
 {
   std::string name = std::filesystem::path(path).filename().string();
-  remove_suffix(name, inprogress_suffix);
-  for (auto const& suffix : s_ignored_suffixes) {
-    if (remove_suffix(name, suffix)) {
-      break;
+  // strip the known suffixes in any order (e.g. "x.hdf5.writing.copied" and "x.hdf5.copied.writing")
+  bool removed = true;
+  while (removed) {
+    removed = remove_suffix(name, inprogress_suffix);
+    for (auto const& suffix : s_ignored_suffixes) {
+      removed = remove_suffix(name, suffix) || removed;
     }
   }
   auto dot_pos = name.rfind('.');

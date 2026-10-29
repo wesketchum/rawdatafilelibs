@@ -23,7 +23,7 @@ for (auto const& record_id : reader->get_record_ids()) {
 }
 ```
 
-- `open_raw_data_file()` picks the backend from the file extension: `.hdf5` loads the `hdf5` backend plugin. An in-progress `.writing` suffix, and the `.copied` suffix that the file transfer system adds, are ignored when choosing (so `x.hdf5.copied` is read as HDF5). For any other name, pass the backend name explicitly.
+- `open_raw_data_file()` picks the backend from the file extension: `.hdf5` loads the `hdf5` backend plugin. An in-progress `.writing` suffix, and the `.copied` suffix that the file transfer system adds, are ignored when choosing, in any order (so `x.hdf5.copied` and `x.hdf5.writing.copied` are read as HDF5). For any other name, pass the backend name explicitly.
 - Each record's `daqdataformats::RecordIndex` (header SourceID, plus the fragment SourceIDs with their fragment types and subdetectors) is the source of truth for what the record contains. Fragments are found by SourceID, never by format-specific locations.
 - Errors are ERS issues from `rawdatafilelibs/Issues.hpp`:
   - `RecordIDNotFound`: the record isn't in the file.
@@ -46,6 +46,8 @@ writer->close();
 - **In-progress name.** The file is written as `<file_name>.writing` and renamed to `<file_name>` by `close()`.
 - **Never overwritten.** Existing files are never reused or overwritten. If either name exists, creation fails with `FileOpenFailed` and the existing file is left untouched. If the final name appears before `close()`, the file keeps its in-progress name and `close()` throws `FileCloseFailed`.
 - **Explicit close.** Call `close()`: it can report errors, whereas the destructor can only log them.
+- **One part per SourceID.** A record whose header and fragments don't all have different SourceIDs is refused with `DuplicateSourceID`, and nothing of it is written.
+- **Failed writes are removed.** If the backend fails in the middle of a record, the writer asks it to remove what it stored (`WriterBackend::discard_record`), so the record can be written again. `FileWriteFailed` says whether that worked; with a backend that can't remove records, the record may remain partly stored.
 
 ## Writing a backend
 
@@ -57,6 +59,15 @@ DEFINE_DUNE_RAW_DATA_FILE_BACKEND(MyReaderBackend, MyWriterBackend)
 ```
 
 Backends only store and retrieve bytes, record indices and metadata. Record assembly, caching, error reporting and the in-progress name are handled once, for every format, by `RawDataFileReader` and `RawDataFileWriter`.
+
+Override `WriterBackend::discard_record()` if the format can remove a partly written record; the default reports that it can't.
+
+## Known limitations
+
+- The reader and writer constructors and `write()` turn only `std::exception`s from a backend into rawdatafilelibs issues; anything else a backend throws there passes through unchanged. (`close()` and the destructors catch everything.)
+- The statistics stored at `close()` are taken before the backend writes its closing values, so for HDF5 `total_file_size` excludes the closing attributes. If the backend's `close()` fails, `get_stats()` afterwards returns the values from file creation (zeros).
+- If `recover_raw_data_file()` stores the closing values but the rename to the final name then fails, it throws `RecoveryFailed` and the report (which would say `applied`) is not returned. The file has its closing values but keeps its in-progress name; running the recovery again renames it.
+- Not thread-safe: use one reader or writer per thread.
 
 ## Utilities
 

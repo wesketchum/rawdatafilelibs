@@ -80,6 +80,7 @@ public:
   void write_record(const daqdataformats::RecordIndex& index,
                     const BlobView& header,
                     const std::vector<BlobView>& fragments) override;
+  void discard_record(const daqdataformats::RecordID& record_id) override;
   FileStats get_stats() const override;
   void close(const FileMetadata& final_metadata) override;
   bool path_exists(const std::string& path) const override;

@@ -177,6 +177,44 @@ public:
   }
 };
 
+// An in-memory backend whose first write_record() stores part of the record (its header and
+// index) and then throws; with can_discard false it keeps the base class's discard_record(),
+// which doesn't support removing it
+class PartlyWritingWriterBackend : public InMemoryWriterBackend
+{
+public:
+  explicit PartlyWritingWriterBackend(bool can_discard)
+    : m_can_discard(can_discard)
+  {
+  }
+
+  void write_record(const dunedaq::daqdataformats::RecordIndex& index,
+                    const BlobView& header,
+                    const std::vector<BlobView>& fragments) override
+  {
+    if (m_failed) {
+      InMemoryWriterBackend::write_record(index, header, fragments);
+      return;
+    }
+    m_failed = true;
+    InMemoryWriterBackend::write_record(index, header, {});
+    throw std::runtime_error("simulated failure in the middle of a record");
+  }
+
+  void discard_record(const RecordID& record_id) override
+  {
+    if (m_can_discard) {
+      InMemoryWriterBackend::discard_record(record_id);
+    } else {
+      WriterBackend::discard_record(record_id); // NOLINT(bugprone-parent-virtual-call)
+    }
+  }
+
+private:
+  bool m_can_discard;
+  bool m_failed{ false };
+};
+
 std::unique_ptr<RawDataFileWriter>
 make_failing_writer(const std::string& name, bool fail_close, bool fail_rename)
 {
@@ -310,10 +348,66 @@ BOOST_AUTO_TEST_CASE(WriteErrors)
   writer->close();
   BOOST_REQUIRE_THROW(writer->write(make_trigger_record(2)), dunedaq::rawdatafilelibs::FileClosed);
 
+  BOOST_REQUIRE_THROW(writer->get_backend(), dunedaq::rawdatafilelibs::FileClosed);
+
   FileMetadata no_type = make_metadata(RecordType::kUnknown);
   BOOST_REQUIRE_THROW(
     RawDataFileWriter(std::make_unique<InMemoryWriterBackend>(), "no_type.rdfmem", no_type, SourceIDGeoIDMap()),
     dunedaq::rawdatafilelibs::FileOpenFailed);
+}
+
+BOOST_AUTO_TEST_CASE(DuplicateSourceIDsAreRejected)
+{
+  auto writer = make_writer("duplicate_source_ids.rdfmem");
+
+  // two fragments with the same SourceID
+  TriggerRecord record = make_trigger_record(1);
+  record.add_fragment(make_fragment(tpc_0, FragmentType::kWIBEth, Subdetector::kHD_TPC, 'd'));
+  BOOST_REQUIRE_THROW(writer->write(record), dunedaq::rawdatafilelibs::DuplicateSourceID);
+  BOOST_REQUIRE(!writer->record_exists(RecordID{ 1 }));
+
+  // a fragment with the header's SourceID
+  TriggerRecord record2 = make_trigger_record(2);
+  record2.add_fragment(make_fragment(trb, FragmentType::kWIBEth, Subdetector::kHD_TPC, 'e'));
+  BOOST_REQUIRE_THROW(writer->write(record2), dunedaq::rawdatafilelibs::DuplicateSourceID);
+  BOOST_REQUIRE(!writer->record_exists(RecordID{ 2 }));
+
+  BOOST_REQUIRE_EQUAL(writer->get_stats().recorded_size, 0);
+  writer->write(make_trigger_record(1));
+  BOOST_REQUIRE(writer->record_exists(RecordID{ 1 }));
+}
+
+BOOST_AUTO_TEST_CASE(FailedWriteIsRemoved)
+{
+  auto writer = std::make_unique<RawDataFileWriter>(std::make_unique<PartlyWritingWriterBackend>(true),
+                                                    "failed_write_removed.rdfmem",
+                                                    make_metadata(RecordType::kTriggerRecord),
+                                                    make_geo_id_map());
+  BOOST_REQUIRE_THROW(writer->write(make_trigger_record(1)), dunedaq::rawdatafilelibs::FileWriteFailed);
+  BOOST_REQUIRE(!writer->record_exists(RecordID{ 1 }));
+  BOOST_REQUIRE_EQUAL(writer->get_stats().recorded_size, 0);
+
+  // the retry succeeds, and the file holds the record once, complete
+  writer->write(make_trigger_record(1));
+  writer->close();
+  auto reader = make_reader("failed_write_removed.rdfmem");
+  BOOST_REQUIRE_EQUAL(reader->get_record_ids().size(), 1);
+  BOOST_REQUIRE_EQUAL(reader->get_trigger_record(RecordID{ 1 }).get_fragments_ref().size(), 3);
+}
+
+BOOST_AUTO_TEST_CASE(FailedWriteWithoutDiscardSupport)
+{
+  auto writer = std::make_unique<RawDataFileWriter>(std::make_unique<PartlyWritingWriterBackend>(false),
+                                                    "failed_write_kept.rdfmem",
+                                                    make_metadata(RecordType::kTriggerRecord),
+                                                    make_geo_id_map());
+  try {
+    writer->write(make_trigger_record(1));
+    BOOST_FAIL("write() should have thrown");
+  } catch (dunedaq::rawdatafilelibs::FileWriteFailed const& issue) {
+    BOOST_REQUIRE(std::string(issue.what()).find("may remain partly stored") != std::string::npos);
+  }
+  BOOST_REQUIRE(writer->record_exists(RecordID{ 1 }));
 }
 
 BOOST_AUTO_TEST_CASE(InProgressName)

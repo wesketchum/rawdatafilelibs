@@ -20,7 +20,8 @@ namespace dunedaq::rawdatafilelibs {
 
 // The backend (plugin) name for a file: its extension, ignoring an in-progress suffix and the ".copied"
 // suffix that the file transfer system adds, e.g. "run1.hdf5", "run1.hdf5.writing" and "run1.hdf5.copied"
-// all give "hdf5". Empty if there is no extension.
+// all give "hdf5". These suffixes are ignored in any order and combination (e.g. "run1.hdf5.writing.copied").
+// Empty if there is no extension.
 std::string
 backend_name_for_path(const std::string& path,
                       const std::string& inprogress_suffix = RawDataFileWriter::s_default_inprogress_suffix);

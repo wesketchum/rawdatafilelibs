@@ -29,8 +29,14 @@ ERS_DECLARE_ISSUE(rawdatafilelibs,
 
 ERS_DECLARE_ISSUE(rawdatafilelibs,
                   FileWriteFailed,
-                  "Problem writing record " << record_id << " to file " << file,
-                  ((std::string)record_id)((std::string)file))
+                  "Problem writing record " << record_id << " to file " << file << ": " << message,
+                  ((std::string)record_id)((std::string)file)((std::string)message))
+
+ERS_DECLARE_ISSUE(rawdatafilelibs,
+                  DuplicateSourceID,
+                  "Record " << record_id << " for file " << file << " has more than one part (header or fragment) with SourceID "
+                            << source_id << "; nothing of it was written",
+                  ((std::string)source_id)((std::string)record_id)((std::string)file))
 
 ERS_DECLARE_ISSUE(rawdatafilelibs, FileClosed, "File " << file << " has already been closed", ((std::string)file))
 

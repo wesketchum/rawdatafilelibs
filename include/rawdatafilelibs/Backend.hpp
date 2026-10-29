@@ -114,9 +114,6 @@ public:
 };
 
 /**
- * @brief Format-specific writing. Created unopened by the plugin; open() is called once.
- */
-/**
  * @brief What a backend finds in a file left unfinished (e.g. by a crash), for recover_raw_data_file()
  */
 struct RecoveryScan
@@ -131,6 +128,9 @@ struct RecoveryScan
   uint64_t last_modified_ms{ 0 }; ///< The file's last modification time; 0 if unknown // NOLINT(build/unsigned)
 };
 
+/**
+ * @brief Format-specific writing. Created unopened by the plugin; open() is called once.
+ */
 class WriterBackend
 {
 public:
@@ -147,6 +147,12 @@ public:
   virtual void write_record(const daqdataformats::RecordIndex& index,
                             const BlobView& header,
                             const std::vector<BlobView>& fragments) = 0;
+
+  // Called only after write_record() threw for this record: removes whatever part of the record
+  // it stored, so that record_exists() is false again and get_stats() no longer counts it (the
+  // file size may stay as it is). The default throws std::runtime_error ("not supported"); the
+  // generic writer then reports that the record may remain partly stored.
+  virtual void discard_record(const daqdataformats::RecordID& record_id);
 
   virtual FileStats get_stats() const = 0;
 
