@@ -20,6 +20,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace dunedaq::rawdatafilelibs {
 
@@ -38,45 +39,46 @@ class RawDataFileWriter
 public:
   static constexpr const char* s_default_inprogress_suffix = ".writing";
 
-  // Creates the file; throws FileOpenFailed. A creation_timestamp_ms of 0 is replaced by the current time.
+  /// Creates the file; throws FileOpenFailed. A creation_timestamp_ms of 0 is replaced by the current time.
   RawDataFileWriter(std::unique_ptr<WriterBackend> backend,
                     const std::string& file_name,
                     const FileMetadata& metadata,
                     const daqdataformats::SourceIDGeoIDMap& geo_id_map,
                     const std::string& inprogress_suffix = s_default_inprogress_suffix);
 
-  // Calls close(); any failure is reported with ers::error
-  ~RawDataFileWriter();
+  /// Throw RecordTypeMismatch, RecordAlreadyExists, DuplicateSourceID (nothing written), FileClosed or
+  /// FileWriteFailed. After FileWriteFailed, whatever the backend stored of the record is removed again
+  /// if the backend supports that (the issue says whether it was), so the record can be written again.
+  void write(const daqdataformats::TriggerRecord& trigger_record);
+  void write(const daqdataformats::TimeSlice& timeslice);
+
+  /// Whether a record with this ID has been written to the file; throws FileClosed
+  bool contains(const daqdataformats::RecordID& record_id) const;
+
+  FileStats get_stats() const;
+
+  /// The metadata as given at creation; after close(), the final metadata as stored
+  const FileMetadata& get_metadata() const noexcept { return m_metadata; }
+
+  const std::string& get_file_name() const noexcept { return m_file_name; }
+  /// The name on storage: the in-progress name while open, the final name once closed successfully
+  const std::string& get_current_file_name() const noexcept { return m_current_file_name; }
+
+  /// For format-specific extras; throws FileClosed after close()
+  WriterBackend& get_backend() const;
+
+  /// Finalizes the file and renames it to its final name. May throw FileCloseFailed, in which
+  /// case the file keeps its in-progress name. Calling it again is a no-op.
+  void close();
+  bool is_open() const noexcept { return m_backend != nullptr && m_open; }
 
   RawDataFileWriter(const RawDataFileWriter&) = delete;
   RawDataFileWriter& operator=(const RawDataFileWriter&) = delete;
   RawDataFileWriter(RawDataFileWriter&&) = delete;
   RawDataFileWriter& operator=(RawDataFileWriter&&) = delete;
 
-  // Throw RecordTypeMismatch, RecordAlreadyExists, DuplicateSourceID (nothing written), FileClosed or
-  // FileWriteFailed. After FileWriteFailed, whatever the backend stored of the record is removed again
-  // if the backend supports that (the issue says whether it was), so the record can be written again.
-  void write(const daqdataformats::TriggerRecord& trigger_record);
-  void write(const daqdataformats::TimeSlice& timeslice);
-
-  bool record_exists(const daqdataformats::RecordID& record_id) const;
-
-  FileStats get_stats() const;
-
-  // The metadata as given at creation; after close(), the final metadata as stored
-  const FileMetadata& get_metadata() const noexcept { return m_metadata; }
-
-  const std::string& get_file_name() const noexcept { return m_file_name; }
-  // The name on storage: the in-progress name while open, the final name once closed successfully
-  const std::string& get_current_file_name() const noexcept { return m_current_file_name; }
-
-  // For format-specific extras; throws FileClosed after close()
-  WriterBackend& get_backend() const;
-
-  // Finalizes the file and renames it to its final name. May throw FileCloseFailed, in which
-  // case the file keeps its in-progress name. Calling it again is a no-op.
-  void close();
-  bool is_open() const noexcept { return m_backend != nullptr && m_open; }
+  /// Calls close(); any failure is reported with ers::error
+  ~RawDataFileWriter();
 
 private:
   void write_record(const daqdataformats::RecordIndex& index,

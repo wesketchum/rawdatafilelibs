@@ -34,8 +34,9 @@ ERS_DECLARE_ISSUE(rawdatafilelibs,
 
 ERS_DECLARE_ISSUE(rawdatafilelibs,
                   DuplicateSourceID,
-                  "Record " << record_id << " for file " << file << " has more than one part (header or fragment) with SourceID "
-                            << source_id << "; nothing of it was written",
+                  "Record " << record_id << " for file " << file
+                            << " has more than one part (header or fragment) with SourceID " << source_id
+                            << "; nothing of it was written",
                   ((std::string)source_id)((std::string)record_id)((std::string)file))
 
 ERS_DECLARE_ISSUE(rawdatafilelibs, FileClosed, "File " << file << " has already been closed", ((std::string)file))
@@ -51,12 +52,12 @@ ERS_DECLARE_ISSUE(rawdatafilelibs,
                   ((std::string)source_id)((std::string)record_id)((std::string)file))
 
 ERS_DECLARE_ISSUE(rawdatafilelibs,
-                  RecordReadFailed,
+                  RecordIndexReadFailed,
                   "Unable to read the index of record " << record_id << " from file " << file << ": " << message,
                   ((std::string)record_id)((std::string)file)((std::string)message))
 
 ERS_DECLARE_ISSUE(rawdatafilelibs,
-                  FragmentMissing,
+                  RecordPartUnreadable,
                   "Record " << record_id << " of file " << file << " lists SourceID " << source_id
                             << ", but its data could not be read: " << message,
                   ((std::string)source_id)((std::string)record_id)((std::string)file)((std::string)message))
@@ -74,8 +75,8 @@ ERS_DECLARE_ISSUE(rawdatafilelibs,
 ERS_DECLARE_ISSUE(rawdatafilelibs,
                   BackendNotAvailable,
                   "No raw data file backend \"" << backend << "\" could be loaded (for file " << file
-                                                 << "): no duneRawDataFileBackend plugin of that name was found on"
-                                                 << " CET_PLUGIN_PATH. Is the package that provides it set up?",
+                                                << "): no duneRawDataFileBackend plugin of that name was found on"
+                                                << " CET_PLUGIN_PATH. Is the package that provides it set up?",
                   ((std::string)backend)((std::string)file))
 
 ERS_DECLARE_ISSUE(rawdatafilelibs,

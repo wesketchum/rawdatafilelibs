@@ -83,8 +83,6 @@ InMemoryStore::clear()
   m_files.clear();
 }
 
-// ---------------------------------------------------------------------------
-
 void
 InMemoryReaderBackend::open(const std::string& path)
 {
@@ -117,7 +115,7 @@ InMemoryReaderBackend::read_record_ids()
 }
 
 daqdataformats::RecordIndex
-InMemoryReaderBackend::read_index(const daqdataformats::RecordID& record_id)
+InMemoryReaderBackend::read_record_index(const daqdataformats::RecordID& record_id)
 {
   auto iter = m_file->indices.find(record_id);
   if (iter == m_file->indices.end()) {
@@ -126,16 +124,16 @@ InMemoryReaderBackend::read_index(const daqdataformats::RecordID& record_id)
   return iter->second;
 }
 
-Buffer
+Blob
 InMemoryReaderBackend::read_blob(const daqdataformats::RecordID& record_id, const daqdataformats::SourceID& source_id)
 {
   auto iter = m_file->blobs.find(std::make_pair(record_id, source_id));
   if (iter == m_file->blobs.end()) {
     throw std::runtime_error("no data stored for " + source_id.to_string() + " in record " + record_id.to_string());
   }
-  Buffer buffer = allocate_buffer(iter->second.size());
-  std::memcpy(buffer.data.get(), iter->second.data(), iter->second.size());
-  return buffer;
+  Blob blob = allocate_blob(iter->second.size());
+  std::memcpy(blob.data.get(), iter->second.data(), iter->second.size());
+  return blob;
 }
 
 void
@@ -143,8 +141,6 @@ InMemoryReaderBackend::close()
 {
   m_file.reset();
 }
-
-// ---------------------------------------------------------------------------
 
 void
 InMemoryWriterBackend::open(const std::string& path,
@@ -255,7 +251,11 @@ InMemoryWriterBackend::scan_for_recovery(const std::string& path)
     for (auto const& source_id : index.get_fragment_source_ids()) {
       count(source_id);
     }
-    ++(complete ? scan.readable_records : scan.unreadable_records);
+    if (complete) {
+      ++scan.readable_records;
+    } else {
+      ++scan.unreadable_records;
+    }
   }
   return scan;
 }

@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <iomanip>
 #include <sstream>
@@ -42,18 +43,26 @@ rename_without_replacing(const std::string& from, const std::string& to)
                                 "linked " + from + " to " + to +
                                   " but could remove neither name, so the file is now under both");
       }
-      throw std::system_error(
-        error, std::generic_category(), "could not rename " + from + " to " + to + " (the old name could not be removed)");
+      throw std::system_error(error,
+                              std::generic_category(),
+                              "could not rename " + from + " to " + to + " (the old name could not be removed)");
     }
     error = errno;
   }
   throw std::system_error(error, std::generic_category(), "could not rename " + from + " to " + to);
 }
 
+uint64_t // NOLINT(build/unsigned)
+current_time_ms()
+{
+  return static_cast<uint64_t>( // NOLINT(build/unsigned)
+    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+}
+
 std::optional<size_t>
 get_free_space(const std::string& path)
 {
-  struct statvfs vfs_results;
+  struct statvfs vfs_results{};
   if (statvfs(path.c_str(), &vfs_results) != 0) {
     return std::nullopt;
   }
@@ -61,7 +70,7 @@ get_free_space(const std::string& path)
 }
 
 std::string
-make_file_name(const FileNameParams& params, daqdataformats::run_number_t run_number, size_t file_index)
+make_file_name(const FilenameParams& params, daqdataformats::run_number_t run_number, size_t file_index)
 {
   std::ostringstream oss;
   if (!params.directory_path.empty()) {

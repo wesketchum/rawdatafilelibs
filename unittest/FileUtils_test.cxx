@@ -43,13 +43,13 @@ read_text_file(const std::string& name)
   std::ifstream file(name);
   return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 }
-} // namespace
+} // namespace ""
 
 BOOST_AUTO_TEST_SUITE(FileUtils_test)
 
 BOOST_AUTO_TEST_CASE(FileNameMatchesDAQConvention)
 {
-  FileNameParams params;
+  FilenameParams params;
   params.directory_path = "/data";
   params.operational_environment = "np04hd";
   params.file_type_prefix = "raw";

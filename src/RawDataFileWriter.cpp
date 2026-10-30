@@ -7,11 +7,11 @@
  */
 
 #include "rawdatafilelibs/RawDataFileWriter.hpp"
+#include "rawdatafilelibs/FileUtils.hpp"
 #include "rawdatafilelibs/Issues.hpp"
 
 #include "ers/ers.hpp"
 
-#include <chrono>
 #include <memory>
 #include <set>
 #include <string>
@@ -19,15 +19,6 @@
 #include <vector>
 
 namespace dunedaq::rawdatafilelibs {
-
-namespace {
-uint64_t // NOLINT(build/unsigned)
-now_ms()
-{
-  return static_cast<uint64_t>( // NOLINT(build/unsigned)
-    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-}
-} // namespace
 
 RawDataFileWriter::RawDataFileWriter(std::unique_ptr<WriterBackend> backend,
                                      const std::string& file_name,
@@ -46,7 +37,7 @@ RawDataFileWriter::RawDataFileWriter(std::unique_ptr<WriterBackend> backend,
     throw FileOpenFailed(ERS_HERE, m_current_file_name, "the record type (TriggerRecord or TimeSlice) must be set");
   }
   if (m_metadata.creation_timestamp_ms == 0) {
-    m_metadata.creation_timestamp_ms = now_ms();
+    m_metadata.creation_timestamp_ms = current_time_ms();
   }
 
   // never reuse or overwrite an existing file, e.g. one left behind by a crash
@@ -87,7 +78,7 @@ RawDataFileWriter::get_backend() const
 }
 
 bool
-RawDataFileWriter::record_exists(const daqdataformats::RecordID& record_id) const
+RawDataFileWriter::contains(const daqdataformats::RecordID& record_id) const
 {
   if (!is_open()) {
     throw FileClosed(ERS_HERE, m_current_file_name);
@@ -184,7 +175,7 @@ RawDataFileWriter::close()
   m_open = false; // a failed close is not retried
 
   FileMetadata final_metadata = m_metadata;
-  final_metadata.closing_timestamp_ms = now_ms();
+  final_metadata.closing_timestamp_ms = current_time_ms();
   try {
     final_metadata.stats = m_backend->get_stats();
     m_backend->close(final_metadata);

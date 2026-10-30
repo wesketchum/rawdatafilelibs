@@ -26,6 +26,7 @@
 #include "daqdataformats/SourceIDGeoIDMap.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <set>
@@ -33,7 +34,7 @@
 #include <vector>
 
 #ifndef EXTERN_C_FUNC_DECLARE_START
-// NOLINTNEXTLINE
+// NOLINTNEXTLINE(build/define_used)
 #define EXTERN_C_FUNC_DECLARE_START                                                                                    \
   extern "C"                                                                                                           \
   {
@@ -44,7 +45,7 @@
  * @param reader_klass Class implementing ReaderBackend
  * @param writer_klass Class implementing WriterBackend
  */
-// NOLINTNEXTLINE
+// NOLINTNEXTLINE(build/define_used)
 #define DEFINE_DUNE_RAW_DATA_FILE_BACKEND(reader_klass, writer_klass)                                                  \
   EXTERN_C_FUNC_DECLARE_START                                                                                          \
   std::unique_ptr<dunedaq::rawdatafilelibs::ReaderBackend> make_reader()                                               \
@@ -60,24 +61,27 @@
 namespace dunedaq::rawdatafilelibs {
 
 /**
- * @brief Buffers returned by backends are allocated with std::malloc, so that a Fragment
+ * @brief Blobs returned by backends are allocated with std::malloc, so that a Fragment
  * (which frees its buffer with std::free) can take one over without copying it.
  */
 struct FreeDeleter
 {
   void operator()(void* ptr) const noexcept { std::free(ptr); } // NOLINT(cppcoreguidelines-no-malloc)
 };
-using buffer_ptr_t = std::unique_ptr<char[], FreeDeleter>; // NOLINT(modernize-avoid-c-arrays)
+using blob_ptr_t = std::unique_ptr<char[], FreeDeleter>; // NOLINT(modernize-avoid-c-arrays)
 
-struct Buffer
+/**
+ * @brief The stored bytes of one part of a record (its header or a fragment), owned
+ */
+struct Blob
 {
-  buffer_ptr_t data;
+  blob_ptr_t data;
   size_t size{ 0 };
 };
 
-// Allocates a Buffer of the given size with std::malloc; throws std::bad_alloc on failure
-Buffer
-allocate_buffer(size_t size);
+/// Allocates a Blob of the given size with std::malloc; throws std::bad_alloc on failure
+Blob
+allocate_blob(size_t size);
 
 /**
  * @brief A view of bytes to be written, and the SourceID they belong to
@@ -96,21 +100,26 @@ struct BlobView
 class ReaderBackend
 {
 public:
-  virtual ~ReaderBackend() = default;
+  ReaderBackend() = default;
 
-  // Opens an existing file for reading
   virtual void open(const std::string& path) = 0;
 
   virtual FileMetadata read_metadata() = 0;
   virtual daqdataformats::SourceIDGeoIDMap read_geo_id_map() = 0;
   virtual std::set<daqdataformats::RecordID> read_record_ids() = 0;
-  virtual daqdataformats::RecordIndex read_index(const daqdataformats::RecordID& record_id) = 0;
+  virtual daqdataformats::RecordIndex read_record_index(const daqdataformats::RecordID& record_id) = 0;
 
-  // The stored bytes of the record header (when source_id is the header's SourceID) or of a fragment
-  virtual Buffer read_blob(const daqdataformats::RecordID& record_id, const daqdataformats::SourceID& source_id) = 0;
+  /// The stored bytes of the record header (when source_id is the header's SourceID) or of a fragment
+  virtual Blob read_blob(const daqdataformats::RecordID& record_id, const daqdataformats::SourceID& source_id) = 0;
 
-  // Must release the file, even when it throws, and be harmless if open() failed or wasn't called
+  /// Must release the file, even when it throws, and be harmless if open() failed or wasn't called
   virtual void close() = 0;
+
+  ReaderBackend(const ReaderBackend&) = delete;
+  ReaderBackend& operator=(const ReaderBackend&) = delete;
+  ReaderBackend(ReaderBackend&&) = delete;
+  ReaderBackend& operator=(ReaderBackend&&) = delete;
+  virtual ~ReaderBackend() = default;
 };
 
 /**
@@ -118,9 +127,9 @@ public:
  */
 struct RecoveryScan
 {
-  FileMetadata stored;                 ///< The metadata as stored; closing values are 0 where missing
-  bool has_closing_timestamp{ false }; ///< Whether the closing timestamp is stored
-  bool has_stats{ false };             ///< Whether all FileStats values are stored
+  FileMetadata stored; ///< The metadata as stored; closing values are 0 where missing
+  bool has_closing_timestamp{ false };
+  bool has_stats{ false };
   bool has_recovery_timestamp{ false };
   FileStats calculated_stats; ///< Recalculated from the stored data, in the format's own terms (see below)
   size_t readable_records{ 0 };
@@ -134,52 +143,58 @@ struct RecoveryScan
 class WriterBackend
 {
 public:
-  virtual ~WriterBackend() = default;
+  WriterBackend() = default;
 
-  // Creates a new file at path. Must fail, leaving any existing file untouched, if path exists.
+  /// Creates a new file at path. Must fail, leaving any existing file untouched, if path exists.
   virtual void open(const std::string& path,
                     const FileMetadata& metadata,
                     const daqdataformats::SourceIDGeoIDMap& geo_id_map) = 0;
 
   virtual bool record_exists(const daqdataformats::RecordID& record_id) = 0;
 
-  // Writes one complete record: its header bytes, its fragments' bytes, and its index
+  /// Writes one complete record: its header bytes, its fragments' bytes, and its index
   virtual void write_record(const daqdataformats::RecordIndex& index,
                             const BlobView& header,
                             const std::vector<BlobView>& fragments) = 0;
 
-  // Called only after write_record() threw for this record: removes whatever part of the record
-  // it stored, so that record_exists() is false again and get_stats() no longer counts it (the
-  // file size may stay as it is). The default throws std::runtime_error ("not supported"); the
-  // generic writer then reports that the record may remain partly stored.
+  /// Called only after write_record() threw for this record: removes whatever part of the record
+  /// it stored, so that record_exists() is false again and get_stats() no longer counts it (the
+  /// file size may stay as it is). The default throws std::runtime_error ("not supported"); the
+  /// generic writer then reports that the record may remain partly stored.
   virtual void discard_record(const daqdataformats::RecordID& record_id);
 
   virtual FileStats get_stats() const = 0;
 
-  // Stores the final metadata and closes the file. Must release the file, even when it throws.
+  /// Stores the final metadata and closes the file. Must release the file, even when it throws.
   virtual void close(const FileMetadata& final_metadata) = 0;
 
-  // Storage operations that the generic writer uses for the in-progress file name.
-  // The defaults act on the filesystem; backends that don't store files override them.
-  // rename_path must never replace an existing file at `to`, even one that appears concurrently:
-  // it fails instead, leaving both names as they were (the default uses rename_without_replacing).
+  /// Storage operations that the generic writer uses for the in-progress file name.
+  /// The defaults act on the filesystem; backends that don't store files override them.
+  /// rename_path must never replace an existing file at `to`, even one that appears concurrently:
+  /// it fails instead, leaving both names as they were (the default uses rename_without_replacing).
   virtual bool path_exists(const std::string& path) const;
   virtual void rename_path(const std::string& from, const std::string& to);
 
-  // Recovery of a file left unfinished (used by recover_raw_data_file(); not with open()).
-  // scan_for_recovery reads the file at path without changing it. calculated_stats counts every
-  // part (record header or fragment) that can still be read, as close() would have counted it
-  // (recorded_size as stored, e.g. after compression), and total_file_size is the file's size now;
-  // a record with any unreadable part also counts in unreadable_records. It must throw if it can't
-  // tell which records the file holds, rather than report a file with no records: recovery then
-  // fails and the file is left untouched.
-  // store_recovery_metadata stores, in the file at path, the closing values of final_metadata that
-  // the scan found missing (closing timestamp, stats, recovery timestamp), and nothing else.
-  // Backends that can't recover files keep these defaults, which throw std::runtime_error.
+  /// Recovery of a file left unfinished (used by recover_raw_data_file(); not with open()).
+  /// scan_for_recovery reads the file at path without changing it. calculated_stats counts every
+  /// part (record header or fragment) that can still be read, as close() would have counted it
+  /// (recorded_size as stored, e.g. after compression), and total_file_size is the file's size now;
+  /// a record with any unreadable part also counts in unreadable_records. It must throw if it can't
+  /// tell which records the file holds, rather than report a file with no records: recovery then
+  /// fails and the file is left untouched.
+  /// store_recovery_metadata stores, in the file at path, the closing values of final_metadata that
+  /// the scan found missing (closing timestamp, stats, recovery timestamp), and nothing else.
+  /// Backends that can't recover files keep these defaults, which throw std::runtime_error.
   virtual RecoveryScan scan_for_recovery(const std::string& path);
   virtual void store_recovery_metadata(const std::string& path,
                                        const RecoveryScan& scan,
                                        const FileMetadata& final_metadata);
+
+  WriterBackend(const WriterBackend&) = delete;
+  WriterBackend& operator=(const WriterBackend&) = delete;
+  WriterBackend(WriterBackend&&) = delete;
+  WriterBackend& operator=(WriterBackend&&) = delete;
+  virtual ~WriterBackend() = default;
 };
 
 } // namespace dunedaq::rawdatafilelibs

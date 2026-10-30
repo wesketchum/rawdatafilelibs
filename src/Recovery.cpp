@@ -8,9 +8,9 @@
 
 #include "rawdatafilelibs/Recovery.hpp"
 #include "rawdatafilelibs/BackendFactory.hpp"
+#include "rawdatafilelibs/FileUtils.hpp"
 #include "rawdatafilelibs/Issues.hpp"
 
-#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <memory>
@@ -20,13 +20,6 @@
 namespace dunedaq::rawdatafilelibs {
 
 namespace {
-uint64_t // NOLINT(build/unsigned)
-now_ms()
-{
-  return static_cast<uint64_t>( // NOLINT(build/unsigned)
-    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-}
-
 std::string
 stats_string(const FileStats& stats)
 {
@@ -35,7 +28,7 @@ stats_string(const FileStats& stats)
       << ", total_file_size " << stats.total_file_size;
   return oss.str();
 }
-} // namespace
+} // namespace ""
 
 RecoveryReport
 recover_raw_data_file(const std::string& path,
@@ -52,7 +45,7 @@ recover_raw_data_file(const std::string& path,
   }
 
   auto backend =
-    make_writer_backend(backend_name.empty() ? backend_name_for_path(path, inprogress_suffix) : backend_name, path);
+    make_writer_backend(backend_name.empty() ? backend_name_from_path(path, inprogress_suffix) : backend_name, path);
   try {
     report.scan = backend->scan_for_recovery(path);
   } catch (std::exception const& excpt) {
@@ -60,7 +53,7 @@ recover_raw_data_file(const std::string& path,
   }
 
   // work out the closing values the file lacks; values it already has are kept
-  const auto now = now_ms();
+  const auto now = current_time_ms();
   report.final_metadata = report.scan.stored;
   if (!report.scan.has_closing_timestamp) {
     report.final_metadata.closing_timestamp_ms =
@@ -72,14 +65,14 @@ recover_raw_data_file(const std::string& path,
     report.final_metadata.stats = report.scan.calculated_stats;
     report.changes.push_back("stats = " + stats_string(report.final_metadata.stats) + " (recalculated)");
   }
-  if (report.final_path != path) {
-    report.changes.push_back("rename to " + report.final_path);
-  }
   // a complete file under its final name needs nothing, not even a recovery timestamp
-  if (!report.changes.empty() && !report.scan.has_recovery_timestamp) {
+  const bool rename_needed = (report.final_path != path);
+  if ((!report.changes.empty() || rename_needed) && !report.scan.has_recovery_timestamp) {
     report.final_metadata.recovery_timestamp_ms = now;
-    report.changes.insert(report.changes.end() - (report.final_path != path ? 1 : 0),
-                          "recovery_timestamp_ms = " + std::to_string(now));
+    report.changes.push_back("recovery_timestamp_ms = " + std::to_string(now));
+  }
+  if (rename_needed) {
+    report.changes.push_back("rename to " + report.final_path);
   }
 
   if (!apply || report.changes.empty()) {

@@ -17,15 +17,15 @@
 
 namespace dunedaq::rawdatafilelibs {
 
-Buffer
-allocate_buffer(size_t size)
+Blob
+allocate_blob(size_t size)
 {
   // malloc(0) may return nullptr; always allocate at least one byte so that data is non-null
   void* memory = std::malloc(size > 0 ? size : 1); // NOLINT(cppcoreguidelines-no-malloc)
   if (memory == nullptr) {
     throw std::bad_alloc();
   }
-  return Buffer{ buffer_ptr_t(static_cast<char*>(memory)), size };
+  return Blob{ blob_ptr_t(static_cast<char*>(memory)), size };
 }
 
 bool

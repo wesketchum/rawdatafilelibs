@@ -30,7 +30,7 @@ print_usage(const char* program)
             << "  --apply           store the missing closing values and rename the file to its final name\n"
             << "  --backend <name>  the file format backend (default: from the file's extension)\n";
 }
-} // namespace
+} // namespace ""
 
 int
 main(int argc, char** argv)
@@ -43,7 +43,8 @@ main(int argc, char** argv)
     if (arg == "--apply") {
       apply = true;
     } else if (arg == "--backend" && idx + 1 < argc) {
-      backend_name = argv[++idx];
+      ++idx;
+      backend_name = argv[idx];
     } else if (arg == "-h" || arg == "--help") {
       print_usage(argv[0]);
       return 0;
