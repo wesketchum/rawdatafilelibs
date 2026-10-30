@@ -18,25 +18,25 @@
 
 namespace dunedaq::rawdatafilelibs {
 
-// The backend (plugin) name for a file: its extension, ignoring an in-progress suffix and the ".copied"
-// suffix that the file transfer system adds, e.g. "run1.hdf5", "run1.hdf5.writing" and "run1.hdf5.copied"
-// all give "hdf5". These suffixes are ignored in any order and combination (e.g. "run1.hdf5.writing.copied").
-// Empty if there is no extension.
+/// The backend (plugin) name for a file: its extension, ignoring an in-progress suffix and the ".copied"
+/// suffix that the file transfer system adds, e.g. "run1.hdf5", "run1.hdf5.writing" and "run1.hdf5.copied"
+/// all give "hdf5". These suffixes are ignored in any order and combination (e.g. "run1.hdf5.writing.copied").
+/// Empty if there is no extension.
 std::string
-backend_name_for_path(const std::string& path,
-                      const std::string& inprogress_suffix = RawDataFileWriter::s_default_inprogress_suffix);
+backend_name_from_path(const std::string& path,
+                       const std::string& inprogress_suffix = RawDataFileWriter::s_default_inprogress_suffix);
 
-// Load the named backend plugin (cetlib plugin type "duneRawDataFileBackend"); throw BackendNotAvailable
+/// Load the named backend plugin (cetlib plugin type "duneRawDataFileBackend"); throw BackendNotAvailable
 std::unique_ptr<ReaderBackend>
 make_reader_backend(const std::string& backend_name, const std::string& path_for_messages = "");
 std::unique_ptr<WriterBackend>
 make_writer_backend(const std::string& backend_name, const std::string& path_for_messages = "");
 
-// Opens an existing file; the backend defaults to the one named by the file's extension
+/// Opens an existing file; the backend defaults to the one named by the file's extension
 std::unique_ptr<RawDataFileReader>
-open_raw_data_file(const std::string& path, const std::string& backend_name = "");
+open_raw_data_file(const std::string& file_name, const std::string& backend_name = "");
 
-// Creates a new file; the backend defaults to the one named by the file's extension
+/// Creates a new file; the backend defaults to the one named by the file's extension
 std::unique_ptr<RawDataFileWriter>
 create_raw_data_file(const std::string& file_name,
                      const FileMetadata& metadata,

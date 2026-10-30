@@ -24,7 +24,7 @@ enum class RecordType
   kTimeSlice
 };
 
-// "TriggerRecord", "TimeSlice" or "Unknown", matching the names stored in existing files
+/// "TriggerRecord", "TimeSlice" or "Unknown", matching the names stored in existing files
 std::string
 record_type_to_string(RecordType record_type);
 RecordType
@@ -52,11 +52,12 @@ struct FileMetadata
   size_t file_index{ 0 };
   std::string application_name;
   RecordType record_type{ RecordType::kUnknown };
-  uint64_t creation_timestamp_ms{ 0 }; ///< Milliseconds since the epoch; the writer sets it if left at 0 // NOLINT
-  uint64_t closing_timestamp_ms{ 0 };  ///< Milliseconds since the epoch; 0 while the file is open // NOLINT
-  uint64_t recovery_timestamp_ms{
-    0
-  }; ///< When an unfinished file was recovered (recover_raw_data_file()); 0 if never // NOLINT
+  // NOLINTNEXTLINE(build/unsigned)
+  uint64_t creation_timestamp_ms{ 0 }; ///< Milliseconds since the epoch; the writer sets it if left at 0
+  // NOLINTNEXTLINE(build/unsigned)
+  uint64_t closing_timestamp_ms{ 0 }; ///< Milliseconds since the epoch; 0 while the file is open
+  // NOLINTNEXTLINE(build/unsigned)
+  uint64_t recovery_timestamp_ms{ 0 }; ///< Milliseconds since the epoch, set by recover_raw_data_file(); 0 if never
   std::string operational_environment;
   std::string offline_data_stream;
   bool run_is_for_test_purposes{ false };

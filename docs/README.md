@@ -2,7 +2,7 @@
 
 Format-independent reading and writing of DUNE DAQ raw data files (files of TriggerRecords or TimeSlices).
 
-The on-disk format is provided by a **backend** plugin. HDF5 (from `hdf5libs`) is the main format. This package also contains an in-memory backend for tests. Code that reads or writes raw data files uses the classes here and never needs to know which format a file is in.
+The on-disk format is provided by a **backend** plugin. The HDF5 backend comes with `hdf5libs`. This package also contains an in-memory backend for tests. Code that reads or writes raw data files uses the classes here and never needs to know which format a file is in.
 
 ## Reading
 
@@ -28,7 +28,7 @@ for (auto const& record_id : reader->get_record_ids()) {
 - Errors are ERS issues from `rawdatafilelibs/Issues.hpp`:
   - `RecordIDNotFound`: the record isn't in the file.
   - `SourceIDNotFound`: the SourceID isn't in the record.
-  - `FragmentMissing`: the SourceID is listed in the record but its data can't be read.
+  - `RecordPartUnreadable`: the SourceID is listed in the record but its data can't be read.
   - `RecordTypeMismatch`, `FileOpenFailed`, `FileClosed` and others.
 
 ## Writing

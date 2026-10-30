@@ -54,13 +54,13 @@ std::unique_ptr<Fragment>
 make_fragment(const SourceID& source_id, FragmentType fragment_type, Subdetector subdetector, char fill)
 {
   std::vector<char> payload(32, fill);
-  auto frag = std::make_unique<Fragment>(payload.data(), payload.size());
-  FragmentHeader fh = frag->get_header();
-  fh.element_id = source_id;
-  fh.fragment_type = static_cast<dunedaq::daqdataformats::fragment_type_t>(fragment_type);
-  fh.detector_id = static_cast<uint16_t>(subdetector); // NOLINT(build/unsigned)
-  frag->set_header_fields(fh);
-  return frag;
+  auto fragment = std::make_unique<Fragment>(payload.data(), payload.size());
+  FragmentHeader fragment_header = fragment->get_header();
+  fragment_header.element_id = source_id;
+  fragment_header.fragment_type = static_cast<dunedaq::daqdataformats::fragment_type_t>(fragment_type);
+  fragment_header.detector_id = static_cast<uint16_t>(subdetector); // NOLINT(build/unsigned)
+  fragment->set_header_fields(fragment_header);
+  return fragment;
 }
 
 TriggerRecord
@@ -230,7 +230,7 @@ struct StoreCleaner
   ~StoreCleaner() { InMemoryStore::instance().clear(); }
 };
 
-} // namespace
+} // namespace ""
 
 BOOST_FIXTURE_TEST_SUITE(RawDataFile_test, StoreCleaner)
 
@@ -322,14 +322,14 @@ BOOST_AUTO_TEST_CASE(LookupErrors)
   writer->close();
 
   auto reader = make_reader("errors.rdfmem");
-  BOOST_REQUIRE_THROW(reader->get_index(RecordID{ 99 }), dunedaq::rawdatafilelibs::RecordIDNotFound);
+  BOOST_REQUIRE_THROW(reader->get_record_index(RecordID{ 99 }), dunedaq::rawdatafilelibs::RecordIDNotFound);
   BOOST_REQUIRE_THROW(reader->get_fragment(RecordID{ 1 }, tpc_1), dunedaq::rawdatafilelibs::SourceIDNotFound);
   BOOST_REQUIRE_THROW(reader->get_timeslice(RecordID{ 1 }), dunedaq::rawdatafilelibs::RecordTypeMismatch);
 
   // a SourceID listed in the index whose data is missing
   auto file = InMemoryStore::instance().find("errors.rdfmem");
   file->blobs.erase(std::make_pair(RecordID{ 1 }, pds_0));
-  BOOST_REQUIRE_THROW(reader->get_fragment(RecordID{ 1 }, pds_0), dunedaq::rawdatafilelibs::FragmentMissing);
+  BOOST_REQUIRE_THROW(reader->get_fragment(RecordID{ 1 }, pds_0), dunedaq::rawdatafilelibs::RecordPartUnreadable);
 
   BOOST_REQUIRE_THROW(make_reader("does_not_exist.rdfmem"), dunedaq::rawdatafilelibs::FileOpenFailed);
 
@@ -342,7 +342,7 @@ BOOST_AUTO_TEST_CASE(WriteErrors)
 {
   auto writer = make_writer("write_errors.rdfmem");
   writer->write(make_trigger_record(1));
-  BOOST_REQUIRE(writer->record_exists(RecordID{ 1 }));
+  BOOST_REQUIRE(writer->contains(RecordID{ 1 }));
   BOOST_REQUIRE_THROW(writer->write(make_trigger_record(1)), dunedaq::rawdatafilelibs::RecordAlreadyExists);
   BOOST_REQUIRE_THROW(writer->write(TimeSlice(5, 42)), dunedaq::rawdatafilelibs::RecordTypeMismatch);
   writer->close();
@@ -364,17 +364,17 @@ BOOST_AUTO_TEST_CASE(DuplicateSourceIDsAreRejected)
   TriggerRecord record = make_trigger_record(1);
   record.add_fragment(make_fragment(tpc_0, FragmentType::kWIBEth, Subdetector::kHD_TPC, 'd'));
   BOOST_REQUIRE_THROW(writer->write(record), dunedaq::rawdatafilelibs::DuplicateSourceID);
-  BOOST_REQUIRE(!writer->record_exists(RecordID{ 1 }));
+  BOOST_REQUIRE(!writer->contains(RecordID{ 1 }));
 
   // a fragment with the header's SourceID
   TriggerRecord record2 = make_trigger_record(2);
   record2.add_fragment(make_fragment(trb, FragmentType::kWIBEth, Subdetector::kHD_TPC, 'e'));
   BOOST_REQUIRE_THROW(writer->write(record2), dunedaq::rawdatafilelibs::DuplicateSourceID);
-  BOOST_REQUIRE(!writer->record_exists(RecordID{ 2 }));
+  BOOST_REQUIRE(!writer->contains(RecordID{ 2 }));
 
   BOOST_REQUIRE_EQUAL(writer->get_stats().recorded_size, 0);
   writer->write(make_trigger_record(1));
-  BOOST_REQUIRE(writer->record_exists(RecordID{ 1 }));
+  BOOST_REQUIRE(writer->contains(RecordID{ 1 }));
 }
 
 BOOST_AUTO_TEST_CASE(FailedWriteIsRemoved)
@@ -384,7 +384,7 @@ BOOST_AUTO_TEST_CASE(FailedWriteIsRemoved)
                                                     make_metadata(RecordType::kTriggerRecord),
                                                     make_geo_id_map());
   BOOST_REQUIRE_THROW(writer->write(make_trigger_record(1)), dunedaq::rawdatafilelibs::FileWriteFailed);
-  BOOST_REQUIRE(!writer->record_exists(RecordID{ 1 }));
+  BOOST_REQUIRE(!writer->contains(RecordID{ 1 }));
   BOOST_REQUIRE_EQUAL(writer->get_stats().recorded_size, 0);
 
   // the retry succeeds, and the file holds the record once, complete
@@ -407,7 +407,7 @@ BOOST_AUTO_TEST_CASE(FailedWriteWithoutDiscardSupport)
   } catch (dunedaq::rawdatafilelibs::FileWriteFailed const& issue) {
     BOOST_REQUIRE(std::string(issue.what()).find("may remain partly stored") != std::string::npos);
   }
-  BOOST_REQUIRE(writer->record_exists(RecordID{ 1 }));
+  BOOST_REQUIRE(writer->contains(RecordID{ 1 }));
 }
 
 BOOST_AUTO_TEST_CASE(InProgressName)
@@ -498,7 +498,7 @@ BOOST_AUTO_TEST_CASE(NonStandardCloseExceptionsAreContained)
   BOOST_REQUIRE_NO_THROW(unclosed_reader.reset());
 }
 
-// Stored data that can't be a complete fragment or record header gives FragmentMissing, and no
+// Stored data that can't be a complete fragment or record header gives RecordPartUnreadable, and no
 // object is ever built over too little data
 BOOST_AUTO_TEST_CASE(MalformedStoredDataIsRejected)
 {
@@ -507,33 +507,33 @@ BOOST_AUTO_TEST_CASE(MalformedStoredDataIsRejected)
   writer->close();
   auto file = InMemoryStore::instance().find("malformed.rdfmem");
   auto reader = make_reader("malformed.rdfmem");
-  const RecordID rid{ 1 };
-  auto header_sid = reader->get_index(rid).get_header_source_id();
+  const RecordID record_id{ 1 };
+  auto header_source_id = reader->get_record_index(record_id).get_header_source_id();
 
-  auto& tpc_0_blob = file->blobs.at(std::make_pair(rid, tpc_0));
-  auto& tpc_1_blob = file->blobs.at(std::make_pair(rid, tpc_1));
-  auto& pds_0_blob = file->blobs.at(std::make_pair(rid, pds_0));
-  auto& header_blob = file->blobs.at(std::make_pair(rid, header_sid));
+  auto& tpc_0_blob = file->blobs.at(std::make_pair(record_id, tpc_0));
+  auto& tpc_1_blob = file->blobs.at(std::make_pair(record_id, tpc_1));
+  auto& pds_0_blob = file->blobs.at(std::make_pair(record_id, pds_0));
+  auto& header_blob = file->blobs.at(std::make_pair(record_id, header_source_id));
 
   // shorter than a fragment header
   tpc_0_blob.resize(sizeof(dunedaq::daqdataformats::FragmentHeader) - 1);
-  BOOST_REQUIRE_THROW(reader->get_fragment(rid, tpc_0), dunedaq::rawdatafilelibs::FragmentMissing);
+  BOOST_REQUIRE_THROW(reader->get_fragment(record_id, tpc_0), dunedaq::rawdatafilelibs::RecordPartUnreadable);
 
   // the fragment claims more data than is stored
   tpc_1_blob.resize(tpc_1_blob.size() - 1);
-  BOOST_REQUIRE_THROW(reader->get_fragment(rid, tpc_1), dunedaq::rawdatafilelibs::FragmentMissing);
+  BOOST_REQUIRE_THROW(reader->get_fragment(record_id, tpc_1), dunedaq::rawdatafilelibs::RecordPartUnreadable);
 
   // the fragment claims to be smaller than its own header
   reinterpret_cast<dunedaq::daqdataformats::FragmentHeader*>(pds_0_blob.data())->size = 1; // NOLINT
-  BOOST_REQUIRE_THROW(reader->get_fragment(rid, pds_0), dunedaq::rawdatafilelibs::FragmentMissing);
+  BOOST_REQUIRE_THROW(reader->get_fragment(record_id, pds_0), dunedaq::rawdatafilelibs::RecordPartUnreadable);
 
   // the record header claims more component requests than are stored
   reinterpret_cast<dunedaq::daqdataformats::TriggerRecordHeaderData*>(header_blob.data()) // NOLINT
     ->num_requested_components = 1000;
-  BOOST_REQUIRE_THROW(reader->get_trigger_record_header(rid), dunedaq::rawdatafilelibs::FragmentMissing);
+  BOOST_REQUIRE_THROW(reader->get_trigger_record_header(record_id), dunedaq::rawdatafilelibs::RecordPartUnreadable);
   header_blob.resize(sizeof(dunedaq::daqdataformats::TriggerRecordHeaderData) - 1);
-  BOOST_REQUIRE_THROW(reader->get_trigger_record_header(rid), dunedaq::rawdatafilelibs::FragmentMissing);
-  BOOST_REQUIRE_THROW(reader->get_trigger_record(rid), dunedaq::rawdatafilelibs::FragmentMissing);
+  BOOST_REQUIRE_THROW(reader->get_trigger_record_header(record_id), dunedaq::rawdatafilelibs::RecordPartUnreadable);
+  BOOST_REQUIRE_THROW(reader->get_trigger_record(record_id), dunedaq::rawdatafilelibs::RecordPartUnreadable);
 
   reader->close();
 }

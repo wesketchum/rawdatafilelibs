@@ -20,10 +20,10 @@
 namespace dunedaq::rawdatafilelibs {
 
 namespace {
-const std::string s_plugin_type = "duneRawDataFileBackend"; // NOLINT(cert-err58-cpp)
+const std::string plugin_type = "duneRawDataFileBackend"; // NOLINT(cert-err58-cpp)
 
 // Suffixes that other tools add to finished files, ignored when choosing the backend
-const std::vector<std::string> s_ignored_suffixes = { ".copied" }; // NOLINT(cert-err58-cpp)
+const std::vector<std::string> ignored_suffixes = { ".copied" }; // NOLINT(cert-err58-cpp)
 
 // Removes suffix from the end of name, if name ends with it and has something before it
 bool
@@ -40,27 +40,27 @@ remove_suffix(std::string& name, const std::string& suffix)
 cet::BasicPluginFactory&
 reader_factory()
 {
-  static cet::BasicPluginFactory bpf(s_plugin_type, "make_reader"); // NOLINT
-  return bpf;
+  static cet::BasicPluginFactory factory(plugin_type, "make_reader"); // NOLINT
+  return factory;
 }
 
 cet::BasicPluginFactory&
 writer_factory()
 {
-  static cet::BasicPluginFactory bpf(s_plugin_type, "make_writer"); // NOLINT
-  return bpf;
+  static cet::BasicPluginFactory factory(plugin_type, "make_writer"); // NOLINT
+  return factory;
 }
-} // namespace
+} // namespace ""
 
 std::string
-backend_name_for_path(const std::string& path, const std::string& inprogress_suffix)
+backend_name_from_path(const std::string& path, const std::string& inprogress_suffix)
 {
   std::string name = std::filesystem::path(path).filename().string();
   // strip the known suffixes in any order (e.g. "x.hdf5.writing.copied" and "x.hdf5.copied.writing")
   bool removed = true;
   while (removed) {
     removed = remove_suffix(name, inprogress_suffix);
-    for (auto const& suffix : s_ignored_suffixes) {
+    for (auto const& suffix : ignored_suffixes) {
       removed = remove_suffix(name, suffix) || removed;
     }
   }
@@ -106,10 +106,10 @@ make_writer_backend(const std::string& backend_name, const std::string& path_for
 }
 
 std::unique_ptr<RawDataFileReader>
-open_raw_data_file(const std::string& path, const std::string& backend_name)
+open_raw_data_file(const std::string& file_name, const std::string& backend_name)
 {
-  const std::string name = backend_name.empty() ? backend_name_for_path(path) : backend_name;
-  return std::make_unique<RawDataFileReader>(make_reader_backend(name, path), path);
+  const std::string name = backend_name.empty() ? backend_name_from_path(file_name) : backend_name;
+  return std::make_unique<RawDataFileReader>(make_reader_backend(name, file_name), file_name);
 }
 
 std::unique_ptr<RawDataFileWriter>
@@ -119,7 +119,7 @@ create_raw_data_file(const std::string& file_name,
                      const std::string& backend_name,
                      const std::string& inprogress_suffix)
 {
-  const std::string name = backend_name.empty() ? backend_name_for_path(file_name) : backend_name;
+  const std::string name = backend_name.empty() ? backend_name_from_path(file_name) : backend_name;
   return std::make_unique<RawDataFileWriter>(
     make_writer_backend(name, file_name), file_name, metadata, geo_id_map, inprogress_suffix);
 }

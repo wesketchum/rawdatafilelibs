@@ -50,11 +50,11 @@ make_trigger_record(uint64_t trigger_number) // NOLINT(build/unsigned)
   for (auto const& source_id : { tpc_0, tpc_1 }) {
     std::vector<char> payload(100, 'x');
     auto fragment = std::make_unique<Fragment>(payload.data(), payload.size());
-    FragmentHeader fh = fragment->get_header();
-    fh.trigger_number = trigger_number;
-    fh.sequence_number = 0;
-    fh.element_id = source_id;
-    fragment->set_header_fields(fh);
+    FragmentHeader fragment_header = fragment->get_header();
+    fragment_header.trigger_number = trigger_number;
+    fragment_header.sequence_number = 0;
+    fragment_header.element_id = source_id;
+    fragment->set_header_fields(fragment_header);
     record.add_fragment(std::move(fragment));
   }
   return record;
@@ -100,7 +100,7 @@ struct StoreCleaner
   ~StoreCleaner() { InMemoryStore::instance().clear(); }
 };
 
-} // namespace
+} // namespace ""
 
 BOOST_FIXTURE_TEST_SUITE(Recovery_test, StoreCleaner)
 
