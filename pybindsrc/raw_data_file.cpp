@@ -60,14 +60,14 @@ register_raw_data_file(py::module& m)
   py::class_<WriterBackend>(m, "WriterBackend");
 
   py::class_<RawDataFileReader>(m, "RawDataFileReader")
-    .def("get_path", &RawDataFileReader::get_path)
+    .def("get_file_name", &RawDataFileReader::get_file_name)
     .def("get_metadata", &RawDataFileReader::get_metadata, py::return_value_policy::copy)
     .def("get_record_type", &RawDataFileReader::get_record_type)
     .def("get_geo_id_map", &RawDataFileReader::get_geo_id_map, py::return_value_policy::copy)
     .def("get_record_ids", &RawDataFileReader::get_record_ids, py::return_value_policy::copy)
     .def("contains", &RawDataFileReader::contains, py::arg("record_id"))
     // a copy, since the reader's cached index goes away when it is closed
-    .def("get_index", &RawDataFileReader::get_index, py::arg("record_id"), py::return_value_policy::copy)
+    .def("get_record_index", &RawDataFileReader::get_record_index, py::arg("record_id"), py::return_value_policy::copy)
     .def("get_fragment_source_ids",
          &RawDataFileReader::get_fragment_source_ids,
          py::arg("record_id"),
@@ -98,7 +98,7 @@ register_raw_data_file(py::module& m)
            return close_on_exit(self, exc_type, exc_value);
          })
     .def("__repr__",
-         [](const RawDataFileReader& self) { return "<rawdatafilelibs::RawDataFileReader " + self.get_path() + ">"; });
+         [](const RawDataFileReader& self) { return "<rawdatafilelibs::RawDataFileReader " + self.get_file_name() + ">"; });
 
   py::class_<RawDataFileWriter>(m, "RawDataFileWriter")
     .def_property_readonly_static(
@@ -106,7 +106,7 @@ register_raw_data_file(py::module& m)
       [](const py::object&) { return std::string(RawDataFileWriter::s_default_inprogress_suffix); })
     .def("write", py::overload_cast<const daqdataformats::TriggerRecord&>(&RawDataFileWriter::write), py::arg("record"))
     .def("write", py::overload_cast<const daqdataformats::TimeSlice&>(&RawDataFileWriter::write), py::arg("record"))
-    .def("record_exists", &RawDataFileWriter::record_exists, py::arg("record_id"))
+    .def("contains", &RawDataFileWriter::contains, py::arg("record_id"))
     .def("get_stats", &RawDataFileWriter::get_stats)
     .def("get_metadata", &RawDataFileWriter::get_metadata, py::return_value_policy::copy)
     .def("get_file_name", &RawDataFileWriter::get_file_name)
@@ -123,8 +123,8 @@ register_raw_data_file(py::module& m)
       return "<rawdatafilelibs::RawDataFileWriter " + self.get_current_file_name() + ">";
     });
 
-  m.def("backend_name_for_path",
-        &backend_name_for_path,
+  m.def("backend_name_from_path",
+        &backend_name_from_path,
         py::arg("path"),
         py::arg("inprogress_suffix") = std::string(RawDataFileWriter::s_default_inprogress_suffix));
   m.def("open_raw_data_file",

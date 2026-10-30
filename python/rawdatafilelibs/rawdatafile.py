@@ -84,7 +84,7 @@ class Record:
     def __init__(self, raw_data_file, record_id):
         self._file = raw_data_file
         self.id = record_id
-        self.index = raw_data_file.reader.get_index(record_id)
+        self.index = raw_data_file.reader.get_record_index(record_id)
 
     @property
     def number(self):
@@ -149,7 +149,7 @@ class RawDataFile:
 
     @property
     def path(self):
-        return self.reader.get_path()
+        return self.reader.get_file_name()
 
     @property
     def metadata(self):

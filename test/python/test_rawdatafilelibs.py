@@ -33,7 +33,7 @@ def test_metadata_and_record_type_names():
 
 
 def test_file_utils():
-    params = rawdatafilelibs.FileNameParams()
+    params = rawdatafilelibs.FilenameParams()
     params.directory_path = "/data"
     params.operational_environment = "np04hd"
     params.file_type_prefix = "raw"
@@ -43,7 +43,7 @@ def test_file_utils():
     assert name == "/data/np04hd_raw_run001234_0005_dataflow0_datawriter_0.hdf5"
     assert rawdatafilelibs.make_timestamp_string(0) == "19700101T000000"
     assert rawdatafilelibs.add_timestamp_suffix("a/b.hdf5", "hdf5", 0) == "a/b_19700101T000000.hdf5"
-    assert rawdatafilelibs.backend_name_for_path("x/run1.hdf5.writing") == "hdf5"
+    assert rawdatafilelibs.backend_name_from_path("x/run1.hdf5.writing") == "hdf5"
     assert rawdatafilelibs.get_free_space("/") is not None
 
 

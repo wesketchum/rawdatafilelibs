@@ -22,17 +22,17 @@ namespace dunedaq::rawdatafilelibs::python {
 void
 register_file_utils(py::module& m)
 {
-  py::class_<FileNameParams>(m, "FileNameParams")
+  py::class_<FilenameParams>(m, "FilenameParams")
     .def(py::init())
-    .def_readwrite("directory_path", &FileNameParams::directory_path)
-    .def_readwrite("operational_environment", &FileNameParams::operational_environment)
-    .def_readwrite("file_type_prefix", &FileNameParams::file_type_prefix)
-    .def_readwrite("run_number_prefix", &FileNameParams::run_number_prefix)
-    .def_readwrite("digits_for_run_number", &FileNameParams::digits_for_run_number)
-    .def_readwrite("file_index_prefix", &FileNameParams::file_index_prefix)
-    .def_readwrite("digits_for_file_index", &FileNameParams::digits_for_file_index)
-    .def_readwrite("writer_identifier", &FileNameParams::writer_identifier)
-    .def_readwrite("extension", &FileNameParams::extension);
+    .def_readwrite("directory_path", &FilenameParams::directory_path)
+    .def_readwrite("operational_environment", &FilenameParams::operational_environment)
+    .def_readwrite("file_type_prefix", &FilenameParams::file_type_prefix)
+    .def_readwrite("run_number_prefix", &FilenameParams::run_number_prefix)
+    .def_readwrite("digits_for_run_number", &FilenameParams::digits_for_run_number)
+    .def_readwrite("file_index_prefix", &FilenameParams::file_index_prefix)
+    .def_readwrite("digits_for_file_index", &FilenameParams::digits_for_file_index)
+    .def_readwrite("writer_identifier", &FilenameParams::writer_identifier)
+    .def_readwrite("extension", &FilenameParams::extension);
 
   m.def("make_file_name", &make_file_name, py::arg("params"), py::arg("run_number"), py::arg("file_index"));
   m.def(

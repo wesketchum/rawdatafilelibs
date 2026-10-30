@@ -106,7 +106,7 @@ subdetector. The writer builds the index from the record itself (`RecordIndex::f
 `src/RawDataFileWriter.cpp`), and the backend stores it. The reader answers every question about a
 record from its index:
 - a SourceID that isn't in the index gives `SourceIDNotFound`;
-- a SourceID that is in the index but whose bytes can't be read gives `FragmentMissing`;
+- a SourceID that is in the index but whose bytes can't be read gives `RecordPartUnreadable`;
 - selections (`SourceIDSelector`) and per-record GeoIDs are worked out from the index.
 
 See `include/rawdatafilelibs/RawDataFileReader.hpp` (class comment) and
@@ -136,7 +136,7 @@ every format (`src/RawDataFileWriter.cpp`):
 cetlib plugin type `duneRawDataFileBackend`. It exports `make_reader()` and `make_writer()`, both
 declared by `DEFINE_DUNE_RAW_DATA_FILE_BACKEND(reader_klass, writer_klass)`
 (`include/rawdatafilelibs/Backend.hpp`). The plugin's name is the file extension that it handles.
-`backend_name_for_path()` (`src/BackendFactory.cpp`) applies these rules:
+`backend_name_from_path()` (`src/BackendFactory.cpp`) applies these rules:
 1. Take the file name only, without the directory.
 2. Remove trailing known suffixes, in any order and as long as one matches: the in-progress
    suffix (default `.writing`) and `.copied`, the suffix that the file transfer system adds. A
@@ -151,8 +151,8 @@ other file name, pass the backend name explicitly. Every entry point takes an op
 `backend_name` that overrides the extension.
 
 **5. Buffers are malloc'd so that a Fragment can adopt them.** `ReaderBackend::read_blob()` returns
-a `Buffer`, which is a `std::unique_ptr<char[], FreeDeleter>` plus a size. It is allocated with
-`std::malloc` by `allocate_buffer()`, which always allocates at least 1 byte so that the pointer is
+a `Blob`, which is a `std::unique_ptr<char[], FreeDeleter>` plus a size. It is allocated with
+`std::malloc` by `allocate_blob()`, which always allocates at least 1 byte so that the pointer is
 never null. The reader passes `buffer.data.release()` to
 `Fragment(..., BufferAdoptionMode::kTakeOverBuffer)`, and `Fragment` frees it with `std::free`. No
 copy is made, and allocation and deallocation match. Before the refactor, hdf5libs handed `new[]`
@@ -173,12 +173,12 @@ log failures, with `ers::error`, and never throw. A close is attempted once and 
 
 | File | Contents |
 |---|---|
-| `include/rawdatafilelibs/Backend.hpp`, `src/Backend.cpp` | `ReaderBackend`, `WriterBackend`, `RecoveryScan`, `Buffer`, `BlobView`, `FreeDeleter`, `allocate_buffer()`, `DEFINE_DUNE_RAW_DATA_FILE_BACKEND`; defaults for `discard_record`, `path_exists`, `rename_path` and the recovery hooks |
-| `include/rawdatafilelibs/BackendFactory.hpp`, `src/BackendFactory.cpp` | `backend_name_for_path()`, `make_reader_backend()`, `make_writer_backend()`, `open_raw_data_file()`, `create_raw_data_file()` |
+| `include/rawdatafilelibs/Backend.hpp`, `src/Backend.cpp` | `ReaderBackend`, `WriterBackend`, `RecoveryScan`, `Blob`, `BlobView`, `FreeDeleter`, `allocate_blob()`, `DEFINE_DUNE_RAW_DATA_FILE_BACKEND`; defaults for `discard_record`, `path_exists`, `rename_path` and the recovery hooks |
+| `include/rawdatafilelibs/BackendFactory.hpp`, `src/BackendFactory.cpp` | `backend_name_from_path()`, `make_reader_backend()`, `make_writer_backend()`, `open_raw_data_file()`, `create_raw_data_file()` |
 | `include/rawdatafilelibs/RawDataFileReader.hpp`, `src/RawDataFileReader.cpp` | `RawDataFileReader` |
 | `include/rawdatafilelibs/RawDataFileWriter.hpp`, `src/RawDataFileWriter.cpp` | `RawDataFileWriter` |
 | `include/rawdatafilelibs/FileMetadata.hpp`, `src/FileMetadata.cpp` | `RecordType`, `FileStats`, `FileMetadata`, `record_type_to_string()`, `string_to_record_type()` |
-| `include/rawdatafilelibs/FileUtils.hpp`, `src/FileUtils.cpp` | `rename_without_replacing()`, `get_free_space()`, `FileNameParams`, `make_file_name()`, `make_timestamp_string()`, `add_timestamp_suffix()` |
+| `include/rawdatafilelibs/FileUtils.hpp`, `src/FileUtils.cpp` | `rename_without_replacing()`, `get_free_space()`, `current_time_ms()`, `FilenameParams`, `make_file_name()`, `make_timestamp_string()`, `add_timestamp_suffix()` |
 | `include/rawdatafilelibs/Recovery.hpp`, `src/Recovery.cpp` | `RecoveryReport`, `recover_raw_data_file()`, `to_string(RecoveryReport)` |
 | `include/rawdatafilelibs/InMemoryBackend.hpp`, `src/InMemoryBackend.cpp` | `InMemoryFile`, `InMemoryStore`, `InMemoryReaderBackend`, `InMemoryWriterBackend` |
 | `include/rawdatafilelibs/Issues.hpp` | the ERS issues (§8) |
@@ -217,13 +217,13 @@ classDiagram
         -set~RecordID~ m_record_ids
         -map~RecordID,RecordIndex~ m_index_cache
         +RawDataFileReader(unique_ptr~ReaderBackend~ backend, string path)
-        +get_path() string
+        +get_file_name() string
         +get_metadata() FileMetadata
         +get_record_type() RecordType
         +get_geo_id_map() SourceIDGeoIDMap
         +get_record_ids() set~RecordID~
         +contains(RecordID) bool
-        +get_index(RecordID) RecordIndex
+        +get_record_index(RecordID) RecordIndex
         +get_fragment_source_ids(RecordID, SourceIDSelector) set~SourceID~
         +get_geo_ids(RecordID, SourceIDSelector) set~GeoID~
         +get_fragment(RecordID, SourceID) unique_ptr~Fragment~
@@ -247,7 +247,7 @@ classDiagram
         +RawDataFileWriter(unique_ptr~WriterBackend~ backend, string file_name, FileMetadata metadata, SourceIDGeoIDMap geo_id_map, string inprogress_suffix)
         +write(TriggerRecord) void
         +write(TimeSlice) void
-        +record_exists(RecordID) bool
+        +contains(RecordID) bool
         +get_stats() FileStats
         +get_metadata() FileMetadata
         +get_file_name() string
@@ -263,8 +263,8 @@ classDiagram
         +read_metadata()* FileMetadata
         +read_geo_id_map()* SourceIDGeoIDMap
         +read_record_ids()* set~RecordID~
-        +read_index(RecordID)* RecordIndex
-        +read_blob(RecordID, SourceID)* Buffer
+        +read_record_index(RecordID)* RecordIndex
+        +read_blob(RecordID, SourceID)* Blob
         +close()* void
     }
 
@@ -284,9 +284,9 @@ classDiagram
 
     RawDataFileReader "1" *-- "1" ReaderBackend : owns (unique_ptr), released by close()
     RawDataFileWriter "1" *-- "1" WriterBackend : owns (unique_ptr)
-    RawDataFileReader ..> Buffer : adopts into Fragment
+    RawDataFileReader ..> Blob : adopts into Fragment
     RawDataFileWriter ..> BlobView : passes views of the record
-    ReaderBackend ..> Buffer : returns
+    ReaderBackend ..> Blob : returns
     WriterBackend ..> BlobView : receives
     WriterBackend ..> RecoveryScan : returns
 ```
@@ -309,7 +309,7 @@ The virtual members of the backend interfaces and their defaults:
 |---|---|---|---|---|
 | `ReaderBackend` | `open(path)` | yes | | Called once, on an unopened backend |
 | | `read_metadata()`, `read_geo_id_map()`, `read_record_ids()` | yes | | Called once each, by the reader's constructor |
-| | `read_index(record_id)` | yes | | Called at most once per record (the reader caches the result) |
+| | `read_record_index(record_id)` | yes | | Called at most once per record (the reader caches the result) |
 | | `read_blob(record_id, source_id)` | yes | | The bytes of the record header (when `source_id` is the header's SourceID) or of a fragment |
 | | `close()` | yes | | Must release the file even when it throws, and be harmless if `open()` failed or was never called |
 | | `~ReaderBackend()` | virtual | `= default` | |
@@ -362,8 +362,8 @@ classDiagram
         +operator==(FileMetadata) bool
     }
 
-    class Buffer {
-        +buffer_ptr_t data
+    class Blob {
+        +blob_ptr_t data
         +size_t size
     }
 
@@ -398,7 +398,7 @@ classDiagram
         +bool renamed
     }
 
-    class FileNameParams {
+    class FilenameParams {
         +string directory_path
         +string operational_environment
         +string file_type_prefix
@@ -412,7 +412,7 @@ classDiagram
 
     FileMetadata *-- "1" FileStats : stats
     FileMetadata --> RecordType
-    Buffer ..> FreeDeleter : data is unique_ptr of char[] with FreeDeleter
+    Blob ..> FreeDeleter : data is unique_ptr of char[] with FreeDeleter
     RecoveryScan *-- "1" FileMetadata : stored
     RecoveryScan *-- "1" FileStats : calculated_stats
     RecoveryReport *-- "1" RecoveryScan : scan
@@ -424,11 +424,11 @@ classDiagram
 | `RecordType` | `FileMetadata.hpp` | `record_type_to_string()` gives `"TriggerRecord"`, `"TimeSlice"` or `"Unknown"`, the names stored in existing files. `string_to_record_type()` maps any other string to `kUnknown` |
 | `FileStats` | `FileMetadata.hpp` | `recorded_size` counts bytes as stored (after compression). `uncompressed_raw_data_size` counts bytes before compression. `total_file_size` is the whole file, including format overhead. Defaulted `==` |
 | `FileMetadata` | `FileMetadata.hpp` | Writers receive it at creation; `closing_timestamp_ms` and `stats` are filled in at close. A `creation_timestamp_ms` of 0 is replaced by "now". `recovery_timestamp_ms` is 0 unless the file was recovered. `layout_version` is format-specific (0 if not applicable). Defaulted `==` |
-| `Buffer` | `Backend.hpp` | `data` is a `buffer_ptr_t` = `std::unique_ptr<char[], FreeDeleter>`. Create one with `allocate_buffer(size)`, which throws `std::bad_alloc` on failure |
+| `Blob` | `Backend.hpp` | `data` is a `blob_ptr_t` = `std::unique_ptr<char[], FreeDeleter>`. Create one with `allocate_blob(size)`, which throws `std::bad_alloc` on failure |
 | `BlobView` | `Backend.hpp` | Non-owning view of bytes to write, with their SourceID. Valid only during the `write_record` call |
 | `RecoveryScan` | `Backend.hpp` | One `FileMetadata stored` (closing values 0 where missing), one `FileStats calculated_stats` |
 | `RecoveryReport` | `Recovery.hpp` | One `RecoveryScan`, one `FileMetadata final_metadata`, the list of changes |
-| `FileNameParams` | `FileUtils.hpp` | The fields of appmodel `FilenameParams` plus context. `extension` has no leading `.` |
+| `FilenameParams` | `FileUtils.hpp` | The fields of appmodel `FilenameParams` plus context. `extension` has no leading `.` |
 
 ### 4.3 Plugin factory and the in-memory backend
 
@@ -438,7 +438,7 @@ classDiagram
 
     class BackendFactory {
         <<free functions>>
-        +backend_name_for_path(string path, string inprogress_suffix)$ string
+        +backend_name_from_path(string path, string inprogress_suffix)$ string
         +make_reader_backend(string backend_name, string path_for_messages)$ unique_ptr~ReaderBackend~
         +make_writer_backend(string backend_name, string path_for_messages)$ unique_ptr~WriterBackend~
         +open_raw_data_file(string path, string backend_name)$ unique_ptr~RawDataFileReader~
@@ -542,7 +542,7 @@ classDiagram
         +get_record_type_name() string
         +get_dataset_path(RecordID, SourceID) string
         +get_dataset_paths(string group_path) vector~string~
-        +read_dataset(string dataset_path) Buffer
+        +read_dataset(string dataset_path) Blob
         -load_record(RecordID) RecordContents
         -scan_legacy_record(RecordID, Group) RecordContents
     }
@@ -700,7 +700,7 @@ sequenceDiagram
     participant B as ReaderBackend (e.g. HDF5ReaderBackend)
 
     C->>F: open_raw_data_file("run1.hdf5")
-    F->>F: backend_name_for_path() gives "hdf5"
+    F->>F: backend_name_from_path() gives "hdf5"
     F->>PF: makePlugin("hdf5"), symbol make_reader
     opt no plugin, or cet::exception
         PF-->>C: throw BackendNotAvailable
@@ -724,14 +724,14 @@ sequenceDiagram
     R->>R: check_open(), else FileClosed
     R->>R: contains(rid), else RecordIDNotFound
     opt index of rid not cached yet (lazy load)
-        R->>B: read_index(rid)
-        B-->>R: RecordIndex (std::exception gives RecordReadFailed)
+        R->>B: read_record_index(rid)
+        B-->>R: RecordIndex (std::exception gives RecordIndexReadFailed)
         R->>R: store in m_index_cache
     end
     R->>R: index.contains_fragment(sid), else SourceIDNotFound
     R->>B: read_blob(rid, sid)
-    B-->>R: Buffer from allocate_buffer() (std::exception gives FragmentMissing)
-    R->>R: check size against FragmentHeader, else FragmentMissing
+    B-->>R: Blob from allocate_blob() (std::exception gives RecordPartUnreadable)
+    R->>R: check size against FragmentHeader, else RecordPartUnreadable
     R-->>C: Fragment that took over the buffer (kTakeOverBuffer)
 ```
 
@@ -745,13 +745,13 @@ read lazily, one record at a time, on the first call that needs them, and are ca
 | Method | Behaviour (`src/RawDataFileReader.cpp`) |
 |---|---|
 | `get_record_ids()`, `contains()` | From the set read at open. Still usable after `close()` |
-| `get_index(rid)` | `FileClosed` if closed. `RecordIDNotFound` if `rid` is not in the set. Loads and caches the index otherwise. A backend failure gives `RecordReadFailed` |
-| `get_fragment_source_ids(rid, sel)` | `get_index(rid).get_fragment_source_ids(sel)`. The record header's SourceID is never included |
+| `get_record_index(rid)` | `FileClosed` if closed. `RecordIDNotFound` if `rid` is not in the set. Loads and caches the index otherwise. A backend failure gives `RecordIndexReadFailed` |
+| `get_fragment_source_ids(rid, sel)` | `get_record_index(rid).get_fragment_source_ids(sel)`. The record header's SourceID is never included |
 | `get_geo_ids(rid, sel)` | For each selected SourceID of the record, its GeoIDs from the file's map, as a set |
-| `get_fragment(rid, sid)` | See 5.1. The stored data must be at least `sizeof(FragmentHeader)`. The header's `size` must not exceed the data and must not be smaller than `sizeof(FragmentHeader)`. Otherwise `FragmentMissing` |
+| `get_fragment(rid, sid)` | See 5.1. The stored data must be at least `sizeof(FragmentHeader)`. The header's `size` must not exceed the data and must not be smaller than `sizeof(FragmentHeader)`. Otherwise `RecordPartUnreadable` |
 | `get_fragments(rid, sel)` | `get_fragment` for each selected SourceID, in SourceID order |
-| `get_trigger_record_header(rid)` | First `RecordTypeMismatch` if the file's type is `kTimeSlice`. Reads the blob of the index's header SourceID, and checks that it holds a `TriggerRecordHeaderData` and all the `ComponentRequest`s that it claims, else `FragmentMissing`. Then copies it into a new `TriggerRecordHeader` (`TriggerRecordHeader(buffer, true)`), and the buffer is freed |
-| `get_timeslice_header(rid)` | First `RecordTypeMismatch` if the file's type is `kTriggerRecord`. The blob must be at least `sizeof(TimeSliceHeader)`, else `FragmentMissing`. Copies it with `memcpy` |
+| `get_trigger_record_header(rid)` | First `RecordTypeMismatch` if the file's type is `kTimeSlice`. Reads the blob of the index's header SourceID, and checks that it holds a `TriggerRecordHeaderData` and all the `ComponentRequest`s that it claims, else `RecordPartUnreadable`. Then copies it into a new `TriggerRecordHeader` (`TriggerRecordHeader(buffer, true)`), and the buffer is freed |
+| `get_timeslice_header(rid)` | First `RecordTypeMismatch` if the file's type is `kTriggerRecord`. The blob must be at least `sizeof(TimeSliceHeader)`, else `RecordPartUnreadable`. Copies it with `memcpy` |
 | `get_trigger_record(rid)` / `get_timeslice(rid)` | Header as above, plus all fragments of the record, moved into the record |
 | `close()` | No-op if already closed. Moves the backend out (so it is released even if closing throws), clears the cache, calls `backend->close()`, and turns any exception, `std::exception` or not, into `FileCloseFailed` |
 | `~RawDataFileReader()` | Calls `close()`. `ers::Issue` is logged with `ers::error`. Other exceptions are logged as `FileCloseFailed`. Never throws |
@@ -759,9 +759,9 @@ read lazily, one record at a time, on the first call that needs them, and are ca
 Record-type checks give files that don't say what they hold the benefit of the doubt: a
 `kUnknown` file passes both header checks (`check_record_type`).
 
-After `close()`, only `get_path()`, `get_metadata()`, `get_geo_id_map()` and `get_record_ids()` may
+After `close()`, only `get_file_name()`, `get_metadata()`, `get_geo_id_map()` and `get_record_ids()` may
 be used (header comment). `contains()` also still works, because it only reads the set. Everything
-that reads data goes through `get_index()` and throws `FileClosed`.
+that reads data goes through `get_record_index()` and throws `FileClosed`.
 
 ---
 
@@ -1003,11 +1003,11 @@ Python they arrive as `RuntimeError` (the tests match on `RuntimeError`).
 | `FileOpenFailed` | file, message | Reader: no backend given, or the backend's `open`/`read_metadata`/`read_geo_id_map`/`read_record_ids` throws. Writer: no backend given, record type `kUnknown`, the in-progress or final name already exists, or the backend's `open` throws. Also thrown by `InMemoryStore::create` for an existing path | `RawDataFileReader.cpp`, `RawDataFileWriter.cpp`, `InMemoryBackend.cpp` |
 | `FileCloseFailed` | file, message | Reader `close()`: the backend's `close()` throws anything. Writer `close()`: `get_stats()`/`close()` throws, the final name exists, or `rename_path` throws. Also logged (not thrown) by destructors for non-ERS exceptions | `RawDataFileReader.cpp`, `RawDataFileWriter.cpp` |
 | `FileWriteFailed` | record_id, file, message | Backend `write_record` throws a `std::exception`. The writer has then called `discard_record`; the message says "the partly written record was removed" or "the record may remain partly stored (...)" | `RawDataFileWriter.cpp` |
-| `FileClosed` | file | Reader: any data access after `close()` (`get_index`, and everything built on it, plus `get_backend`). Writer: `write()`, `record_exists()` or `get_backend()` after `close()` | both |
+| `FileClosed` | file | Reader: any data access after `close()` (`get_record_index`, and everything built on it, plus `get_backend`). Writer: `write()`, `record_exists()` or `get_backend()` after `close()` | both |
 | `RecordIDNotFound` | record_id, file | Reader: the record is not in the file | `RawDataFileReader.cpp` |
 | `SourceIDNotFound` | source_id, record_id, file | Reader `get_fragment`: the SourceID is not in the record's index | `RawDataFileReader.cpp` |
-| `RecordReadFailed` | record_id, file, message | Reader: the backend's `read_index` throws | `RawDataFileReader.cpp` |
-| `FragmentMissing` | source_id, record_id, file, message | Reader: the SourceID is listed in the index (or is the header's) but `read_blob` throws, or the stored bytes are too short or inconsistent for a Fragment, TriggerRecordHeader or TimeSliceHeader | `RawDataFileReader.cpp` |
+| `RecordIndexReadFailed` | record_id, file, message | Reader: the backend's `read_record_index` throws | `RawDataFileReader.cpp` |
+| `RecordPartUnreadable` | source_id, record_id, file, message | Reader: the SourceID is listed in the index (or is the header's) but `read_blob` throws, or the stored bytes are too short or inconsistent for a Fragment, TriggerRecordHeader or TimeSliceHeader | `RawDataFileReader.cpp` |
 | `RecordAlreadyExists` | record_id, file | Writer: `backend->record_exists(rid)` is true | `RawDataFileWriter.cpp` |
 | `DuplicateSourceID` | source_id, record_id, file | Writer: two parts of the record (the header and the fragments) have the same SourceID. Checked before the backend is called, so nothing of the record is written | `RawDataFileWriter.cpp` |
 | `RecordTypeMismatch` | file, file_type, requested_type | Writer: writing a TimeSlice to a TriggerRecord file or vice versa. Reader: asking a typed file for the other kind of header or record | both |
@@ -1050,6 +1050,7 @@ Python they arrive as `RuntimeError` (the tests match on `RuntimeError`).
 | `make_timestamp_string(time)` | UTC as `YYYYMMDDTHHMMSS` (`gmtime_r` + `put_time("%Y%m%dT%H%M%S")`) |
 | `add_timestamp_suffix(file_name, extension, time)` | Inserts `"_" + make_timestamp_string(time)` before `".<extension>"`. Names with nothing before the extension are returned unchanged. It does not check that the name actually ends in that extension. Example: `/data/run1_0000_app.hdf5` becomes `/data/run1_0000_app_20251023T131500.hdf5` |
 | `get_free_space(path)` | `statvfs`: `f_bsize * f_bavail` (bytes available to unprivileged users), or `std::nullopt` if `statvfs` fails |
+| `current_time_ms()` | Milliseconds since the epoch from `std::chrono::system_clock`, as stored in `FileMetadata` timestamps |
 | `rename_without_replacing(from, to)` | `renameat2(AT_FDCWD, from, AT_FDCWD, to, RENAME_NOREPLACE)`. If that fails with `EINVAL`, `ENOSYS` or `ENOTSUP` (no `RENAME_NOREPLACE` support, e.g. NFS), it falls back to `link(from, to)` + `unlink(from)`, since `link` also refuses an existing target. Throws `std::system_error` with the errno (`EEXIST` if `to` exists). On failure the file keeps its old name. If `unlink(from)` fails after a successful `link`, the new name is removed again and the error says "the old name could not be removed"; only if that removal fails too is the file left under both names, and the error says so |
 
 These are the format-independent pieces of the old dfmodules `FileDataStoreImpl`, now used by
@@ -1071,15 +1072,15 @@ Module `_daq_rawdatafilelibs_py` (`pybindsrc/`). Everything in it is re-exported
 | Area | Bound names (file) |
 |---|---|
 | Metadata (`file_metadata.cpp`) | `RecordType` (`kUnknown`, `kTriggerRecord`, `kTimeSlice`), `record_type_to_string`, `string_to_record_type`, `FileStats`, `FileMetadata` (all fields read-write, `==`, `__repr__`) |
-| Reader and writer (`raw_data_file.cpp`) | `ReaderBackend`, `WriterBackend` (base classes only, so that format modules can bind subclasses), `RawDataFileReader`, `RawDataFileWriter` (with the static property `s_default_inprogress_suffix`), `backend_name_for_path`, `open_raw_data_file(path, backend_name="")`, `create_raw_data_file(file_name, metadata, geo_id_map=SourceIDGeoIDMap(), backend_name="", inprogress_suffix=".writing")` |
+| Reader and writer (`raw_data_file.cpp`) | `ReaderBackend`, `WriterBackend` (base classes only, so that format modules can bind subclasses), `RawDataFileReader`, `RawDataFileWriter` (with the static property `s_default_inprogress_suffix`), `backend_name_from_path`, `open_raw_data_file(path, backend_name="")`, `create_raw_data_file(file_name, metadata, geo_id_map=SourceIDGeoIDMap(), backend_name="", inprogress_suffix=".writing")` |
 | In-memory store (`raw_data_file.cpp`) | `in_memory_file_exists(path)`, `remove_in_memory_file(path)`, `clear_in_memory_files()` |
-| File utilities (`file_utils.cpp`) | `FileNameParams`, `make_file_name`, `make_timestamp_string(seconds_since_epoch)`, `add_timestamp_suffix(file_name, extension, seconds_since_epoch)`, `get_free_space` (`None` on failure) |
+| File utilities (`file_utils.cpp`) | `FilenameParams`, `make_file_name`, `make_timestamp_string(seconds_since_epoch)`, `add_timestamp_suffix(file_name, extension, seconds_since_epoch)`, `get_free_space` (`None` on failure) |
 | Recovery (`recovery.cpp`) | `RecoveryScan`, `RecoveryReport` (read-only fields, `str()` = `to_string`), `recover_raw_data_file(path, apply=False, backend_name="", inprogress_suffix=".writing")` |
 
 Binding choices:
-- **Copies, not references.** `get_metadata`, `get_geo_id_map`, `get_record_ids` and `get_index`
+- **Copies, not references.** `get_metadata`, `get_geo_id_map`, `get_record_ids` and `get_record_index`
   return copies (`return_value_policy::copy`), so they stay valid after `close()`. This matters for
-  `get_index`, whose C++ reference points into the cache that `close()` clears.
+  `get_record_index`, whose C++ reference points into the cache that `close()` clears.
 - **Backend extras.** `get_backend()` uses `reference_internal`, so the backend keeps its reader or
   writer alive. Because the base classes are bound, pybind11 returns the most derived type
   registered. With `import hdf5libs` (whose `__init__` imports rawdatafilelibs first), an HDF5
@@ -1089,7 +1090,7 @@ Binding choices:
   raised. If the block raised, the close failure is attached to the block's exception with
   `add_note("closing the file also failed: ...")`, and the block's exception propagates
   (`close_on_exit` in `raw_data_file.cpp`).
-- Not bound: `rename_without_replacing`, `make_reader_backend`/`make_writer_backend`, `Buffer`,
+- Not bound: `rename_without_replacing`, `make_reader_backend`/`make_writer_backend`, `Blob`,
   `BlobView`, and `InMemoryStore` itself (only the three helpers above).
 
 ### 10.2 The Pythonic layer
@@ -1101,7 +1102,7 @@ Binding choices:
 | `open(path, backend="")` | Returns a `RawDataFile`. Not exported by `from rawdatafilelibs import *`, so that it doesn't shadow the builtin `open` (test `test_star_import_does_not_shadow_open`) |
 | `create(path, record_type, geo_id_map=None, backend="", inprogress_suffix=None, **metadata)` | Returns the C++-mirror `RawDataFileWriter`, which is a context manager. `record_type` is `"TriggerRecord"`, `"TimeSlice"` or a `RecordType`. Keywords set other `FileMetadata` fields. Unknown fields, and `stats`, `closing_timestamp_ms` and `layout_version`, give `TypeError`. Also not exported by `*` |
 | `RawDataFile` | A file open for reading. Wraps a `RawDataFileReader` (attribute `reader`). Properties: `path`, `metadata`, `record_type` (a string), `geo_id_map`, `backend`, `record_ids` (sorted list). `len()`, `in`, iteration in record order, `records()`, and `f[rid]`, where `rid` is a `RecordID`, an `int` (sequence 0) or a `(number, sequence)` pair. A missing record gives `KeyError`. It is a context manager with the same add-note rule as above |
-| `Record` | One record, read lazily. On construction it holds only its index (`reader.get_index`). Attributes and properties: `id`, `index`, `number`, `sequence`, `header_source_id`, `header` (TimeSliceHeader for `"TimeSlice"` files, else TriggerRecordHeader). Methods: `source_ids(...)`, `geo_ids(...)` (both sorted), `fragment(source_id)`, `fragments(...)` (a generator in SourceID order), `assemble()` (the whole TriggerRecord or TimeSlice). `iter()` gives the fragments, and `len()` the number of fragments |
+| `Record` | One record, read lazily. On construction it holds only its index (`reader.get_record_index`). Attributes and properties: `id`, `index`, `number`, `sequence`, `header_source_id`, `header` (TimeSliceHeader for `"TimeSlice"` files, else TriggerRecordHeader). Methods: `source_ids(...)`, `geo_ids(...)` (both sorted), `fragment(source_id)`, `fragments(...)` (a generator in SourceID order), `assemble()` (the whole TriggerRecord or TimeSlice). `iter()` gives the fragments, and `len()` the number of fragments |
 | `make_selector(subsystem=None, fragment_type=None, subdetector=None)` | A `daqdataformats.SourceIDSelector`. Each criterion may be an enum value or its name, e.g. `"Detector_Readout"`, `"WIBEth"`, `"HD_TPC"`. Unknown names give `ValueError` |
 | `as_record_id(x)` | A `RecordID` from a `RecordID`, an `int` or a 2-sequence. Anything else gives `TypeError` |
 
@@ -1195,8 +1196,8 @@ the same attribute names, types and order as `HDF5RawDataFile` wrote.
 | `read_metadata` | File attributes into `FileMetadata`. Timestamps are read as integers or as decimal strings (before version 6). `file_recovery_timestamp` goes into `recovery_timestamp_ms`. `layout_version` is the layout version |
 | `read_geo_id_map` | The file-level map, through `HDF5SourceIDHandler`, then `SourceIDGeoIDMap::from_encoded` |
 | `read_record_ids` | Top-level groups named exactly `<prefix><digits>[.<digits>]`. Others are ignored |
-| `read_index` | Version 3 and later: from the stored record-level maps. A SourceID listed under two fragment types gives `DuplicateSourceIDInRecord` (a warning, once per file), and the type named in its dataset path is kept. Version 2 and earlier (legacy, read-only): scans the record's dataset paths, takes SourceIDs from the paths through the layout, and stores no fragment types or subdetectors. The header gets the default (invalid) SourceID. The header's SourceID is never listed as a fragment |
-| `read_blob` | `read_dataset(get_dataset_path(record_id, source_id))` into `allocate_buffer` memory |
+| `read_record_index` | Version 3 and later: from the stored record-level maps. A SourceID listed under two fragment types gives `DuplicateSourceIDInRecord` (a warning, once per file), and the type named in its dataset path is kept. Version 2 and earlier (legacy, read-only): scans the record's dataset paths, takes SourceIDs from the paths through the layout, and stores no fragment types or subdetectors. The header gets the default (invalid) SourceID. The header's SourceID is never listed as a fragment |
+| `read_blob` | `read_dataset(get_dataset_path(record_id, source_id))` into `allocate_blob` memory |
 | `close` | Clears the cache and moves the file out (flushes if writable) |
 
 ### 11.3 Expert extras
@@ -1286,11 +1287,11 @@ and HDF5 backends do.
      store the encoded form.
    - `read_record_ids()`: every record in the file. Be strict about what counts as a record (see
      HDF5's well-formed-name rule).
-   - `read_index(rid)`: the stored `RecordIndex`. The header SourceID must not also appear as a
+   - `read_record_index(rid)`: the stored `RecordIndex`. The header SourceID must not also appear as a
      fragment.
-   - `read_blob(rid, sid)`: return a `Buffer` from `allocate_buffer(size)`, never `new[]`. When `sid`
+   - `read_blob(rid, sid)`: return a `Blob` from `allocate_blob(size)`, never `new[]`. When `sid`
      is the index's header SourceID, return the header bytes. Throw if there is no such data (the
-     reader reports `FragmentMissing`).
+     reader reports `RecordPartUnreadable`).
    - `close()`: release the file even if something throws (move the handle into a local first),
      and be harmless if `open()` failed or was never called.
 3. **Implement `WriterBackend`:**
@@ -1349,8 +1350,8 @@ public:
   rawdatafilelibs::FileMetadata read_metadata() override;
   daqdataformats::SourceIDGeoIDMap read_geo_id_map() override;
   std::set<daqdataformats::RecordID> read_record_ids() override;
-  daqdataformats::RecordIndex read_index(const daqdataformats::RecordID& record_id) override;
-  rawdatafilelibs::Buffer read_blob(const daqdataformats::RecordID& record_id,
+  daqdataformats::RecordIndex read_record_index(const daqdataformats::RecordID& record_id) override;
+  rawdatafilelibs::Blob read_blob(const daqdataformats::RecordID& record_id,
                                     const daqdataformats::SourceID& source_id) override;
   void close() override;                                       // release even when throwing
 
@@ -1383,11 +1384,11 @@ private:
 
 ```cpp
 // src/MyFormatBackend.cpp (selected members)
-rawdatafilelibs::Buffer
+rawdatafilelibs::Blob
 MyReaderBackend::read_blob(const daqdataformats::RecordID& record_id, const daqdataformats::SourceID& source_id)
 {
   auto bytes = m_file->find(record_id, source_id);             // throw if absent
-  auto buffer = rawdatafilelibs::allocate_buffer(bytes.size());
+  auto buffer = rawdatafilelibs::allocate_blob(bytes.size());
   std::memcpy(buffer.data.get(), bytes.data(), bytes.size());  // or read straight into buffer.data
   return buffer;
 }
@@ -1449,7 +1450,7 @@ lines, including recovery.
 | | `Metadata` | Creation timestamp filled in. Closing timestamp at or after creation. Stored stats equal `get_stats()`. GeoID map round trip |
 | | `SelectionAndGeoIDs` | Subdetector selection. `get_geo_ids` leaves out fragments missing from the record |
 | | `StoredMapWithSharedGeoIDIsRead` | A stored map that shares a GeoID opens (with `SharedGeoIDs`). `get_source_id` gives no answer. The record still reads |
-| | `LookupErrors` | `RecordIDNotFound`, `SourceIDNotFound`, `RecordTypeMismatch`, `FragmentMissing` (blob removed), `FileOpenFailed` (unknown file), `FileClosed`, a second `close()` |
+| | `LookupErrors` | `RecordIDNotFound`, `SourceIDNotFound`, `RecordTypeMismatch`, `RecordPartUnreadable` (blob removed), `FileOpenFailed` (unknown file), `FileClosed`, a second `close()` |
 | | `WriteErrors` | `RecordAlreadyExists`, `RecordTypeMismatch`, `FileClosed` (also from `get_backend()` after close), unset record type gives `FileOpenFailed` |
 | | `DuplicateSourceIDsAreRejected` | Two fragments with one SourceID, and a fragment with the header's SourceID: `DuplicateSourceID`, nothing stored, and the record can then be written |
 | | `FailedWriteIsRemoved` | A backend that stores part of a record and throws: `FileWriteFailed`, the record is gone, the stats are as before, and the retry gives a complete record |
@@ -1458,7 +1459,7 @@ lines, including recovery.
 | | `ExistingFilesAreNeverReused` | A stale `.writing` is untouched, an existing final file refuses creation, and a final name appearing before close makes close fail and keeps `.writing`, with no retry |
 | | `CloseFailuresKeepTheInProgressName` | Failing finalize and failing rename: `FileCloseFailed` once, not open, `.writing` kept and still readable |
 | | `NonStandardCloseExceptionsAreContained` | A backend throwing `int` from `close()`: `FileCloseFailed` from `close()`, and destructors don't throw |
-| | `MalformedStoredDataIsRejected` | Truncated fragment, fragment claiming more or less than stored, header claiming too many component requests, truncated header: all `FragmentMissing` |
+| | `MalformedStoredDataIsRejected` | Truncated fragment, fragment claiming more or less than stored, header claiming too many component requests, truncated header: all `RecordPartUnreadable` |
 | | `DefaultRenamePathNeverReplaces` | The default `WriterBackend::rename_path` on real files throws `std::system_error` and leaves both files unchanged |
 | `FileUtils_test.cxx` (4) | `FileNameMatchesDAQConvention`, `TimestampSuffix`, `FreeSpace`, `RenameWithoutReplacing` | Name format with and without a directory. Suffix, and a name with nothing before the extension. `nullopt` for a bad path. `EEXIST` with both files intact, then a normal rename, then a missing source. (The `link()` + `unlink()` fallback can't be exercised here: it needs a filesystem without `RENAME_NOREPLACE`) |
 | `BackendFactory_test.cxx` (3) | `BackendNameFromPath`, `WriteAndReadThroughPlugin`, `UnknownBackend` | The extension rules (`.writing`, `.copied`, both in either order, hidden files, directories with dots). A round trip through the `rdfmem` plugin loaded by cetlib. `BackendNotAvailable` for an unknown extension, no extension, and an unknown name |
@@ -1473,7 +1474,7 @@ lines, including recovery.
 They need no recorded data, and use `*.rdfmem` files with an autouse fixture that clears the store:
 - star-import hygiene (no `open`/`create`);
 - metadata and record-type names;
-- file utilities and `backend_name_for_path`;
+- file utilities and `backend_name_from_path`;
 - creating and opening an empty file through both layers;
 - existing files never reused (`RuntimeError` "already exists");
 - the writer context manager keeping the block's exception and adding the close failure as a note;
