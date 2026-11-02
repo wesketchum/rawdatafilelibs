@@ -141,7 +141,8 @@ register_raw_data_file(py::module& m)
         py::arg("inprogress_suffix") = std::string(RawDataFileWriter::s_default_inprogress_suffix),
         "Create a new file; the backend defaults to the one named by the file's extension");
 
-  // The in-memory store behind "*.rdfmem" files, which lives as long as the process
+  // Test helpers: the store behind the in-memory test double ("*.rdfmem" files in a work area),
+  // which lives as long as the process
   m.def(
     "in_memory_file_exists",
     [](const std::string& path) { return InMemoryStore::instance().exists(path); },

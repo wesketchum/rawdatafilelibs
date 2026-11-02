@@ -61,7 +61,8 @@ every format. A format provides only a small storage interface, a `ReaderBackend
   application `rawdatafile_recover`.
 - File utilities for DAQ writers: file names, the timestamp suffix, free space, and a rename that
   never replaces a file.
-- An in-memory backend (`rdfmem`) for unit tests.
+- An in-memory test double for unit tests, loadable in a work area as the test plugin `rdfmem`. It is
+  not a file format.
 - Python bindings that mirror the C++ API, plus a Pythonic layer.
 
 **Out of scope**
@@ -73,7 +74,7 @@ every format. A format provides only a small storage interface, a `ReaderBackend
 flowchart TB
     det["detdataformats<br/>GeoID, DetID"]
     daq["daqdataformats<br/>RecordID, RecordIndex, SourceIDSelector,<br/>SourceIDGeoIDMap, Fragment, TriggerRecord, TimeSlice"]
-    rdf["rawdatafilelibs<br/>RawDataFileReader / RawDataFileWriter<br/>ReaderBackend / WriterBackend, plugin factory<br/>FileMetadata, FileUtils, recovery, rdfmem backend"]
+    rdf["rawdatafilelibs<br/>RawDataFileReader / RawDataFileWriter<br/>ReaderBackend / WriterBackend, plugin factory<br/>FileMetadata, FileUtils, recovery, in-memory test double"]
     h5["hdf5libs<br/>HDF5ReaderBackend / HDF5WriterBackend (plugin hdf5)<br/>HDF5RawDataFile (deprecated facade)"]
     dfm["dfmodules<br/>FileDataStore, HDF5DataStore"]
     trg["trigger, trgtools"]
@@ -182,7 +183,7 @@ log failures, with `ers::error`, and never throw. A close is attempted once and 
 | `include/rawdatafilelibs/Recovery.hpp`, `src/Recovery.cpp` | `RecoveryReport`, `recover_raw_data_file()`, `to_string(RecoveryReport)` |
 | `include/rawdatafilelibs/InMemoryBackend.hpp`, `src/InMemoryBackend.cpp` | `InMemoryFile`, `InMemoryStore`, `InMemoryReaderBackend`, `InMemoryWriterBackend` |
 | `include/rawdatafilelibs/Issues.hpp` | the ERS issues (§8) |
-| `plugins/rdfmem.cpp` | the in-memory backend as plugin `rdfmem` |
+| `test/plugins/rdfmem.cpp` | the in-memory test double as the test plugin `rdfmem` (installed under `test/lib64`, not with the package's plugins) |
 | `apps/rawdatafile_recover.cxx` | the `rawdatafile_recover` application |
 | `pybindsrc/*.cpp` | the C++-mirror Python module `_daq_rawdatafilelibs_py` |
 | `python/rawdatafilelibs/__init__.py`, `rawdatafile.py` | the Python package and the Pythonic layer |
@@ -190,8 +191,8 @@ log failures, with `ers::error`, and never throw. A close is attempted once and 
 | `docs/README.md` | the short user README, including its "Known limitations" list |
 | `docs/DESIGN.md` | this document |
 
-CMake (`CMakeLists.txt`) builds one library (all of `src/`), the plugin
-`daq_add_plugin(rdfmem duneRawDataFileBackend ...)`, the app `rawdatafile_recover`, the Python
+CMake (`CMakeLists.txt`) builds one library (all of `src/`), the test plugin
+`daq_add_plugin(rdfmem duneRawDataFileBackend TEST ...)`, the app `rawdatafile_recover`, the Python
 bindings, and four unit-test modules.
 
 ---
@@ -430,7 +431,7 @@ classDiagram
 | `RecoveryReport` | `Recovery.hpp` | One `RecoveryScan`, one `FileMetadata final_metadata`, the list of changes |
 | `FilenameParams` | `FileUtils.hpp` | The fields of appmodel `FilenameParams` plus context. `extension` has no leading `.` |
 
-### 4.3 Plugin factory and the in-memory backend
+### 4.3 Plugin factory and the in-memory test double
 
 ```mermaid
 classDiagram
@@ -504,8 +505,9 @@ classDiagram
 - `open_raw_data_file()` / `create_raw_data_file()` take the backend name from the path when
   `backend_name` is empty, then construct the reader or writer. `create_raw_data_file()` takes the
   name from `file_name`, the final name, not the in-progress name.
-- The in-memory backend (`InMemoryBackend.hpp`) keeps files in a process-wide `InMemoryStore`, keyed
-  by path, behind a mutex. Only the map is locked: an `InMemoryFile`'s contents are not.
+- The in-memory test double (`InMemoryBackend.hpp`) is not a format: it keeps "files" in a process-wide
+  `InMemoryStore`, keyed by path because the generic layer's job is the file lifecycle and a double
+  has to answer to paths to exercise it. The map is behind a mutex. Only the map is locked: an `InMemoryFile`'s contents are not.
   - The writer overrides `path_exists` and `rename_path` to act on the store.
     `InMemoryStore::rename` throws if `to` exists.
   - Its stats count every blob's size in all three fields.
@@ -1471,7 +1473,8 @@ lines, including recovery.
 
 ### 14.2 rawdatafilelibs Python tests (`test/python/test_rawdatafilelibs.py`, 9 tests)
 
-They need no recorded data, and use `*.rdfmem` files with an autouse fixture that clears the store:
+They need no recorded data, and use `*.rdfmem` files (the test plugin, on `CET_PLUGIN_PATH` in a work
+area) with an autouse fixture that clears the store:
 - star-import hygiene (no `open`/`create`);
 - metadata and record-type names;
 - file utilities and `backend_name_from_path`;
