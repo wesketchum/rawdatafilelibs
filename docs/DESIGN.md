@@ -1173,7 +1173,7 @@ DEFINE_DUNE_RAW_DATA_FILE_BACKEND(dunedaq::hdf5libs::HDF5ReaderBackend, dunedaq:
 ```
 
 and in `hdf5libs:CMakeLists.txt`: `daq_add_plugin(hdf5 duneRawDataFileBackend LINK_LIBRARIES hdf5libs)`.
-The on-disk layout is unchanged: file layout version 7 (`s_current_file_layout_version`), with
+The on-disk layout is unchanged: file layout version 7 (`HDF5FileLayout::s_current_version`), with
 the same attribute names, types and order as `HDF5RawDataFile` wrote.
 
 ### 11.1 Writer
@@ -1213,8 +1213,8 @@ These are reached through `get_backend()`, never through the generic API:
   `get_file_layout_version`, `get_attribute_names`, `has_attribute`, `get_attribute` (str, int or
   float, `KeyError` if absent), `is_legacy_layout`, `get_record_type_name`, `get_dataset_path`,
   `get_dataset_paths` and `read_dataset` (returns `bytes`). `HDF5WriterBackend` binds
-  `get_file_layout_version`. The module also has `s_current_file_layout_version` and
-  `s_last_legacy_file_layout_version`.
+  `get_file_layout_version`. The module also has `current_file_layout_version` and
+  `last_legacy_file_layout_version`.
 
 `hdf5libs::HDF5RawDataFile` is kept as a facade over these classes, marked
 `[[deprecated(...)]]` on this branch (`hdf5libs:include/hdf5libs/HDF5RawDataFile.hpp`). It is to be
