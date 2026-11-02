@@ -1,7 +1,7 @@
 /**
  * @file recovery.cpp Python bindings for recovering unfinished raw data files
  *
- * This is part of the DUNE DAQ Software Suite, copyright 2020.
+ * This is part of the DUNE DAQ Application Framework, copyright 2020.
  * Licensing/copyright details are in the COPYING file that you should have
  * received with this code.
  */

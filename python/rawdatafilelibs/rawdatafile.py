@@ -23,7 +23,7 @@ import detdataformats
 
 from . import _daq_rawdatafilelibs_py as _cpp
 
-__all__ = ["RawDataFile", "Record", "open", "create", "as_record_id", "make_selector"]
+__all__ = ["RawDataFile", "Record", "as_record_id", "create", "make_selector", "open"]
 
 
 def _deprecated(old, new):
@@ -70,7 +70,8 @@ def _subdetector(value):
 
 def make_selector(subsystem=None, fragment_type=None, subdetector=None):
     """A daqdataformats.SourceIDSelector; each criterion may be an enum value or its name
-    (e.g. subsystem="Detector_Readout", fragment_type="WIBEth", subdetector="HD_TPC")."""
+    (e.g. subsystem="Detector_Readout", fragment_type="WIBEth", subdetector="HD_TPC").
+    """
     return daqdataformats.SourceIDSelector(
         subsystem=_subsystem(subsystem),
         fragment_type=_fragment_type(fragment_type),
@@ -145,8 +146,6 @@ class RawDataFile:
     def __init__(self, path, backend=""):
         self.reader = _cpp.open_raw_data_file(str(path), backend)
 
-    # ---- the file ----
-
     @property
     def path(self):
         return self.reader.get_file_name()
@@ -157,7 +156,7 @@ class RawDataFile:
 
     @property
     def record_type(self):
-        """"TriggerRecord", "TimeSlice" or "Unknown"."""
+        """One of "TriggerRecord", "TimeSlice" or "Unknown"."""
         return _cpp.record_type_to_string(self.reader.get_record_type())
 
     @property
@@ -181,18 +180,16 @@ class RawDataFile:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        # A close failure is raised as usual, unless the with-block itself raised: then that
-        # exception is kept and the close failure is attached to it as a note instead.
+        # A close failure must not replace the with-block's own exception: attach it as a note.
         if exc_type is None:
             self.close()
             return False
         try:
             self.close()
         except Exception as close_error:  # noqa: BLE001 - reported on the block's exception
-            exc_value.add_note(f"closing the file also failed: {close_error}")
+            if hasattr(exc_value, "add_note"):
+                exc_value.add_note(f"closing the file also failed: {close_error}")
         return False
-
-    # ---- records ----
 
     def __len__(self):
         return len(self.reader.get_record_ids())
@@ -216,9 +213,9 @@ class RawDataFile:
     def __repr__(self):
         return f"<RawDataFile {self.path} ({self.record_type}, {len(self)} records)>"
 
-    # ---- Compatibility: the hdf5libs.HDF5RawDataFile Python names ----
-    # Record IDs may be given as (number, sequence) pairs, numbers or RecordIDs, and are
-    # returned as (number, sequence) pairs, as HDF5RawDataFile did.
+    # Compatibility: the hdf5libs.HDF5RawDataFile Python names. Record IDs may be given as
+    # (number, sequence) pairs, numbers or RecordIDs, and are returned as (number, sequence)
+    # pairs, as HDF5RawDataFile did.
 
     def get_file_name(self):
         return self.path
@@ -267,8 +264,10 @@ class RawDataFile:
         return set(self[record_id].source_ids(subdetector=subdetector))
 
     def get_source_ids_for_fragtype_and_subdetector(self, record_id, fragment_type, subdetector):
-        _deprecated("get_source_ids_for_fragtype_and_subdetector()",
-                    "record.source_ids(fragment_type=..., subdetector=...)")
+        _deprecated(
+            "get_source_ids_for_fragtype_and_subdetector()",
+            "record.source_ids(fragment_type=..., subdetector=...)",
+        )
         return set(self[record_id].source_ids(fragment_type=fragment_type, subdetector=subdetector))
 
     def get_geo_ids(self, record_id):
@@ -308,7 +307,7 @@ class RawDataFile:
 
 
 def open(path, backend=""):  # noqa: A001 - like gzip.open; not exported by "import *"
-    """Open an existing raw data file for reading; the backend defaults to the one for its extension."""
+    """Open an existing raw data file for reading. The backend defaults to the one named by the extension."""
     return RawDataFile(path, backend)
 
 
@@ -318,15 +317,21 @@ def create(path, record_type, geo_id_map=None, backend="", inprogress_suffix=Non
     record_type is "TriggerRecord" or "TimeSlice" (or a RecordType); the other FileMetadata fields
     (run_number, file_index, application_name, compression_level, operational_environment,
     offline_data_stream, run_is_for_test_purposes, creation_timestamp_ms) can be given as keywords.
-    The file is written as <path>.writing and renamed to <path> when closed; existing files are never
-    reused or overwritten.
+    The backend defaults to the one named by the extension. The file is written as
+    <path><inprogress_suffix> (default ".writing") and renamed to <path> when closed; existing files
+    are never reused or overwritten.
     """
     file_metadata = _cpp.FileMetadata()
     if isinstance(record_type, str):
         record_type = _cpp.string_to_record_type(record_type)
     file_metadata.record_type = record_type
     for name, value in metadata.items():
-        if not hasattr(file_metadata, name) or name in ("stats", "closing_timestamp_ms", "layout_version"):
+        if not hasattr(file_metadata, name) or name in (
+            "stats",
+            "closing_timestamp_ms",
+            "recovery_timestamp_ms",
+            "layout_version",
+        ):
             raise TypeError(f"create() got an unexpected metadata field {name!r}")
         setattr(file_metadata, name, value)
     if geo_id_map is None:

@@ -1,11 +1,11 @@
 """Tests of the rawdatafilelibs Python bindings and Pythonic layer that need no recorded data.
 Run with:  pytest -v sourcecode/rawdatafilelibs/test/python
-(Reading and copying real records is tested in hdf5libs/test/python.)"""
-
-import pytest
+(Reading and copying real records is tested in hdf5libs/test/python.)
+"""
 
 import daqdataformats
 import detdataformats
+import pytest
 import rawdatafilelibs
 
 
@@ -18,9 +18,11 @@ def empty_in_memory_store():
 
 def test_star_import_does_not_shadow_open():
     namespace = {}
-    exec("from rawdatafilelibs import *", namespace)
-    assert "RawDataFileReader" in namespace and "RawDataFile" in namespace
-    assert "open" not in namespace and "create" not in namespace
+    exec("from rawdatafilelibs import *", namespace)  # noqa: S102 - the star import is what is tested
+    assert "RawDataFileReader" in namespace
+    assert "RawDataFile" in namespace
+    assert "open" not in namespace
+    assert "create" not in namespace
 
 
 def test_metadata_and_record_type_names():
@@ -69,8 +71,11 @@ def test_create_and_open_empty_file_both_layers():
 
     # the Pythonic layer
     with rawdatafilelibs.open("empty.rdfmem") as f:
-        assert len(f) == 0 and list(f) == [] and f.record_ids == []
-        assert f.record_type == "TriggerRecord" and f.is_trigger_record_type()
+        assert len(f) == 0
+        assert list(f) == []
+        assert f.record_ids == []
+        assert f.record_type == "TriggerRecord"
+        assert f.is_trigger_record_type()
         assert f.metadata.application_name == "pytest"
         assert (1, 0) not in f
         with pytest.raises(KeyError):
@@ -86,17 +91,18 @@ def test_existing_files_are_never_reused():
 
 def test_close_failure_does_not_hide_the_with_block_exception():
     # a file that appears at the final name while writing makes close() fail
-    with pytest.raises(ValueError, match="from the with block") as caught:
-        with rawdatafilelibs.create("hidden.rdfmem", "TimeSlice"):
-            rawdatafilelibs.create("hidden.rdfmem", "TimeSlice", inprogress_suffix="").close()
-            raise ValueError("from the with block")
+    with (
+        pytest.raises(ValueError, match="from the with block") as caught,
+        rawdatafilelibs.create("hidden.rdfmem", "TimeSlice"),
+    ):
+        rawdatafilelibs.create("hidden.rdfmem", "TimeSlice", inprogress_suffix="").close()
+        raise ValueError("from the with block")
     assert any("closing the file also failed" in note for note in caught.value.__notes__)
     assert rawdatafilelibs.in_memory_file_exists("hidden.rdfmem.writing")
 
     # with no exception in the block, the close failure itself is raised
-    with pytest.raises(RuntimeError, match="already exists"):
-        with rawdatafilelibs.create("plain.rdfmem", "TimeSlice"):
-            rawdatafilelibs.create("plain.rdfmem", "TimeSlice", inprogress_suffix="").close()
+    with pytest.raises(RuntimeError, match="already exists"), rawdatafilelibs.create("plain.rdfmem", "TimeSlice"):
+        rawdatafilelibs.create("plain.rdfmem", "TimeSlice", inprogress_suffix="").close()
 
 
 def test_pythonic_reader_close_failure_does_not_hide_the_with_block_exception():
@@ -115,15 +121,13 @@ def test_pythonic_reader_close_failure_does_not_hide_the_with_block_exception():
             self.reader.close()
             raise RuntimeError("simulated close failure")
 
-    with pytest.raises(KeyError) as caught:
-        with rawdatafilelibs.open("reader_exit.rdfmem") as f:
-            f.reader = FailingClose(f.reader)
-            f[(1, 0)]
+    with pytest.raises(KeyError) as caught, rawdatafilelibs.open("reader_exit.rdfmem") as f:
+        f.reader = FailingClose(f.reader)
+        f[(1, 0)]
     assert any("simulated close failure" in note for note in caught.value.__notes__)
 
-    with pytest.raises(RuntimeError, match="simulated close failure"):
-        with rawdatafilelibs.open("reader_exit.rdfmem") as f:
-            f.reader = FailingClose(f.reader)
+    with pytest.raises(RuntimeError, match="simulated close failure"), rawdatafilelibs.open("reader_exit.rdfmem") as f:
+        f.reader = FailingClose(f.reader)
 
 
 def test_bad_arguments():

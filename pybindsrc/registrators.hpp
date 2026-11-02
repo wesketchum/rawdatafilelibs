@@ -1,7 +1,7 @@
 /**
  * @file registrators.hpp
  *
- * This is part of the DUNE DAQ Software Suite, copyright 2020.
+ * This is part of the DUNE DAQ Application Framework, copyright 2020.
  * Licensing/copyright details are in the COPYING file that you should have
  * received with this code.
  */
@@ -19,7 +19,6 @@ void
 register_raw_data_file(pybind11::module& m);
 void
 register_file_utils(pybind11::module& m);
-
 void
 register_recovery(pybind11::module& m);
 

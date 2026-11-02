@@ -1156,7 +1156,7 @@ dataset-path functions are not provided. They are HDF5-only, and are available o
 | **Supported** | `get_file_name`, `get_record_type`, `is_trigger_record_type`, `is_timeslice_type`, `get_recorded_size`, `get_all_record_ids` (sorted list of pairs), `get_record_header_source_id`, `get_fragment_source_ids` (set, no header), `get_source_ids_for_fragment_type`, `get_source_ids_for_subdetector`, `get_geo_ids` (set of encoded GeoIDs), `get_geo_ids_for_subdetector`, `get_frag(record, source_id)`, `get_trh`, `get_tsh`, `get_trigger_record`, `get_timeslice` |
 | **Deprecated** (`DeprecationWarning`: "rawdatafilelibs RawDataFile.X is deprecated; use Y") | `get_all_trigger_record_ids`, `get_all_timeslice_ids` (use `get_all_record_ids()` or `record_ids`. Both raise `TypeError` for a file of the other type), `get_source_ids` (includes the header's SourceID; use `get_fragment_source_ids()`), `get_source_ids_for_fragtype_and_subdetector` (use `record.source_ids(fragment_type=..., subdetector=...)`), `get_frag(record, geo_id)` with an `int` encoded GeoID (use the GeoID map. For a GeoID under several SourceIDs it takes the first, as `HDF5RawDataFile` did) |
 
-`hdf5libs.HDF5RawDataFile` itself now warns that it is deprecated, and points to
+`hdf5libs.HDF5RawDataFile` itself warns that it is deprecated, and points to
 `rawdatafilelibs.open()` (`hdf5libs:python/hdf5libs/__init__.py`).
 
 ---
@@ -1213,12 +1213,12 @@ These are reached through `get_backend()`, never through the generic API:
   `get_file_layout_version`, `get_attribute_names`, `has_attribute`, `get_attribute` (str, int or
   float, `KeyError` if absent), `is_legacy_layout`, `get_record_type_name`, `get_dataset_path`,
   `get_dataset_paths` and `read_dataset` (returns `bytes`). `HDF5WriterBackend` binds
-  `get_file_layout_version`. The module also has `current_file_layout_version` and
-  `last_legacy_file_layout_version`.
+  `get_file_layout_version`. The module also has `CURRENT_FILE_LAYOUT_VERSION` and
+  `LAST_LEGACY_FILE_LAYOUT_VERSION`.
 
-`hdf5libs::HDF5RawDataFile` is kept as a facade over these classes, marked
-`[[deprecated(...)]]` on this branch (`hdf5libs:include/hdf5libs/HDF5RawDataFile.hpp`). It is to be
-removed in rdf-10. Its behaviour differences are listed in its header comment.
+`hdf5libs::HDF5RawDataFile` is kept as a facade over these classes and will be deprecated later (the
+`[[deprecated(...)]]` attribute and the removal are separate steps). Its behaviour differences are
+listed in its header comment.
 
 ---
 
@@ -1487,12 +1487,13 @@ area) with an autouse fixture that clears the store:
 
 ### 14.3 HDF5 backend tests (hdf5libs, for reference)
 
-`hdf5libs:unittest/HDF5Backend_test.cxx` (16 cases) covers:
+`hdf5libs:unittest/HDF5Backend_test.cxx` (17 cases) covers:
 - round trips through the `hdf5` plugin;
 - the on-disk layout spelled out;
 - the facade writing the same layout and keeping its old semantics;
 - well-formed record names;
-- `DuplicateSourceIDInRecord`;
+- `DuplicateSourceIDInRecord`, and a fragment type name that ends another type's name (`WIB`,
+  `ProtoWIB`);
 - a failed write removed by `discard_record`, then retried;
 - never reusing a file;
 - layout/record-type mismatch;
@@ -1514,7 +1515,7 @@ area) with an autouse fixture that clears the store:
 ## 15. Known limitations and open points
 
 These are points visible in the code at the commits above. There are no `TODO`, `FIXME`, `XXX` or
-`REVIEW` markers in rawdatafilelibs at `eba8f5d`. The only one in hdf5libs is a `FIXME` in a test
+`REVIEW` markers in rawdatafilelibs. The only one in hdf5libs is a `FIXME` in a test
 app (`hdf5libs:test/apps/HDF5LIBS_TestDumpRecord.cpp:242`). Items 3 to 6 are also in the "Known
 limitations" list of `docs/README.md`.
 
@@ -1550,14 +1551,11 @@ limitations" list of `docs/README.md`.
 7. **Python can't build records with fragments from scratch.** daqdataformats binds no `Fragment`
    constructor or `TriggerRecord.add_fragment`. Copying and filtering records read from files
    works.
-8. **Python `create()` accepts `recovery_timestamp_ms` as a keyword.** It excludes only `stats`,
-   `closing_timestamp_ms` and `layout_version`. Its docstring doesn't list
-   `recovery_timestamp_ms`.
-9. **Write performance.** The HDF5 writer flushes after every dataset, as before. Flushing per
+8. **Write performance.** The HDF5 writer flushes after every dataset, as before. Flushing per
    record is an option, but nothing has been measured.
-10. **Packaging.** rawdatafilelibs is staged in a private repository. It still has to move to
-    DUNE-DAQ and be added to the Spack recipes, `release.yaml` and the release
-    `dbt-build-order.cmake` (after daqdataformats, before hdf5libs).
+9. **Packaging.** rawdatafilelibs is staged in a private repository. It still has to move to
+   DUNE-DAQ and be added to the Spack recipes, `release.yaml` and the release
+   `dbt-build-order.cmake` (after daqdataformats, before hdf5libs).
 
 **Fixed since the first review** (rawdatafilelibs `0a0bf65`, hdf5libs `879965f`)
 - A failed `write_record` left the record partly stored, so a retry gave `RecordAlreadyExists`:

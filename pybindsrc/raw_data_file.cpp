@@ -1,8 +1,7 @@
 /**
- * @file raw_data_file.cpp Python bindings for RawDataFileReader, RawDataFileWriter and the backend factory.
- * These mirror the C++ API; the Pythonic layer (rawdatafilelibs.open / rawdatafilelibs.create) is in Python.
+ * @file raw_data_file.cpp Python bindings for RawDataFileReader, RawDataFileWriter and the backend factory
  *
- * This is part of the DUNE DAQ Software Suite, copyright 2020.
+ * This is part of the DUNE DAQ Application Framework, copyright 2020.
  * Licensing/copyright details are in the COPYING file that you should have
  * received with this code.
  */
@@ -47,17 +46,19 @@ close_on_exit(File& file, const py::object& exc_type, const py::object& exc_valu
   }
   return false;
 }
-} // namespace
-
+// The backend base classes, so that format packages can bind their backends (with their
+// format-specific extras) as subclasses, and get_backend() returns the most derived type.
 void
-register_raw_data_file(py::module& m)
+register_backends(py::module& m)
 {
-  using daqdataformats::SourceIDSelector;
-
-  // The backend base classes, so that format packages can bind their backends (with their
-  // format-specific extras) as subclasses, and get_backend() returns the most derived type
   py::class_<ReaderBackend>(m, "ReaderBackend");
   py::class_<WriterBackend>(m, "WriterBackend");
+}
+
+void
+register_reader(py::module& m)
+{
+  using daqdataformats::SourceIDSelector;
 
   py::class_<RawDataFileReader>(m, "RawDataFileReader")
     .def("get_file_name", &RawDataFileReader::get_file_name)
@@ -66,7 +67,7 @@ register_raw_data_file(py::module& m)
     .def("get_geo_id_map", &RawDataFileReader::get_geo_id_map, py::return_value_policy::copy)
     .def("get_record_ids", &RawDataFileReader::get_record_ids, py::return_value_policy::copy)
     .def("contains", &RawDataFileReader::contains, py::arg("record_id"))
-    // a copy, since the reader's cached index goes away when it is closed
+    // Copied, because the reader's cached index goes away when it is closed.
     .def("get_record_index", &RawDataFileReader::get_record_index, py::arg("record_id"), py::return_value_policy::copy)
     .def("get_fragment_source_ids",
          &RawDataFileReader::get_fragment_source_ids,
@@ -92,14 +93,22 @@ register_raw_data_file(py::module& m)
          "The format backend, for format-specific extras (e.g. hdf5libs.HDF5ReaderBackend)")
     .def("close", &RawDataFileReader::close)
     .def("is_open", &RawDataFileReader::is_open)
-    .def("__enter__", [](RawDataFileReader& self) -> RawDataFileReader& { return self; })
+    .def(
+      "__enter__",
+      [](RawDataFileReader& self) -> RawDataFileReader& { return self; },
+      py::return_value_policy::reference_internal)
     .def("__exit__",
          [](RawDataFileReader& self, const py::object& exc_type, const py::object& exc_value, const py::object&) {
            return close_on_exit(self, exc_type, exc_value);
          })
-    .def("__repr__",
-         [](const RawDataFileReader& self) { return "<rawdatafilelibs::RawDataFileReader " + self.get_file_name() + ">"; });
+    .def("__repr__", [](const RawDataFileReader& self) {
+      return "<rawdatafilelibs::RawDataFileReader " + self.get_file_name() + ">";
+    });
+}
 
+void
+register_writer(py::module& m)
+{
   py::class_<RawDataFileWriter>(m, "RawDataFileWriter")
     .def_property_readonly_static(
       "s_default_inprogress_suffix",
@@ -111,10 +120,16 @@ register_raw_data_file(py::module& m)
     .def("get_metadata", &RawDataFileWriter::get_metadata, py::return_value_policy::copy)
     .def("get_file_name", &RawDataFileWriter::get_file_name)
     .def("get_current_file_name", &RawDataFileWriter::get_current_file_name)
-    .def("get_backend", &RawDataFileWriter::get_backend, py::return_value_policy::reference_internal)
+    .def("get_backend",
+         &RawDataFileWriter::get_backend,
+         py::return_value_policy::reference_internal,
+         "The format backend, for format-specific extras (e.g. hdf5libs.HDF5WriterBackend)")
     .def("close", &RawDataFileWriter::close)
     .def("is_open", &RawDataFileWriter::is_open)
-    .def("__enter__", [](RawDataFileWriter& self) -> RawDataFileWriter& { return self; })
+    .def(
+      "__enter__",
+      [](RawDataFileWriter& self) -> RawDataFileWriter& { return self; },
+      py::return_value_policy::reference_internal)
     .def("__exit__",
          [](RawDataFileWriter& self, const py::object& exc_type, const py::object& exc_value, const py::object&) {
            return close_on_exit(self, exc_type, exc_value);
@@ -122,7 +137,12 @@ register_raw_data_file(py::module& m)
     .def("__repr__", [](const RawDataFileWriter& self) {
       return "<rawdatafilelibs::RawDataFileWriter " + self.get_current_file_name() + ">";
     });
+}
 
+// The factory functions, and the test helpers for the in-memory test double
+void
+register_factory(py::module& m)
+{
   m.def("backend_name_from_path",
         &backend_name_from_path,
         py::arg("path"),
@@ -141,8 +161,8 @@ register_raw_data_file(py::module& m)
         py::arg("inprogress_suffix") = std::string(RawDataFileWriter::s_default_inprogress_suffix),
         "Create a new file; the backend defaults to the one named by the file's extension");
 
-  // Test helpers: the store behind the in-memory test double ("*.rdfmem" files in a work area),
-  // which lives as long as the process
+  // Test helpers: the store behind the in-memory test double ("*.rdfmem" files in a work area). It
+  // lives as long as the process.
   m.def(
     "in_memory_file_exists",
     [](const std::string& path) { return InMemoryStore::instance().exists(path); },
@@ -150,6 +170,16 @@ register_raw_data_file(py::module& m)
   m.def(
     "remove_in_memory_file", [](const std::string& path) { InMemoryStore::instance().remove(path); }, py::arg("path"));
   m.def("clear_in_memory_files", []() { InMemoryStore::instance().clear(); });
+}
+} // namespace ""
+
+void
+register_raw_data_file(py::module& m)
+{
+  register_backends(m);
+  register_reader(m);
+  register_writer(m);
+  register_factory(m);
 }
 
 } // namespace dunedaq::rawdatafilelibs::python
