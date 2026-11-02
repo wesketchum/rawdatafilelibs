@@ -1,10 +1,13 @@
 /**
- * @file InMemoryBackend.hpp A raw data file "format" that keeps files in process memory
+ * @file InMemoryBackend.hpp A test double for the backend interfaces that keeps "files" in process memory
  *
- * Intended for unit tests of code that reads or writes raw data files (no disk, no HDF5).
- * Files live in a process-wide InMemoryStore, keyed by path. It is also available as the
- * backend plugin "rdfmem", so files named "*.rdfmem" use it through open_raw_data_file()
- * and create_raw_data_file().
+ * Not a file format: nothing reaches disk, and the store is gone when the process ends. It is for
+ * unit tests of code that reads or writes raw data files (no disk, no HDF5). Files live in a
+ * process-wide InMemoryStore keyed by path, because what the generic layer does is file lifecycle
+ * (in-progress names, never replacing a file, recovery) and a double has to answer to paths to
+ * exercise it. In a work area it is also loadable as the test plugin "rdfmem" (built from
+ * test/plugins, installed under test/lib64), so tests may name files "*.rdfmem" with
+ * open_raw_data_file() and create_raw_data_file().
  *
  * This is part of the DUNE DAQ Application Framework, copyright 2020.
  * Licensing/copyright details are in the COPYING file that you should have
