@@ -32,9 +32,10 @@ daq_add_library(Backend.cpp
                 LINK_LIBRARIES ${RAWDATAFILELIBS_DEPENDENCIES})
 
 ##############################################################################
-# Plugins: the in-memory backend, for files named "*.rdfmem"
+# Test plugin: the in-memory test double, loadable as "rdfmem" in a work area. It is installed
+# under test/lib64, which dbt adds to CET_PLUGIN_PATH, not with the package's plugins.
 
-daq_add_plugin(rdfmem duneRawDataFileBackend LINK_LIBRARIES rawdatafilelibs)
+daq_add_plugin(rdfmem duneRawDataFileBackend TEST LINK_LIBRARIES rawdatafilelibs)
 
 ##############################################################################
 # Applications

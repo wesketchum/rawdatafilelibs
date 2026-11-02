@@ -2,7 +2,7 @@
 
 Format-independent reading and writing of DUNE DAQ raw data files (files of TriggerRecords or TimeSlices).
 
-The on-disk format is provided by a **backend** plugin. The HDF5 backend comes with `hdf5libs`. This package also contains an in-memory backend for tests. Code that reads or writes raw data files uses the classes here and never needs to know which format a file is in.
+The on-disk format is provided by a **backend** plugin. The HDF5 backend comes with `hdf5libs`. This package also contains an in-memory test double, which is not a format (see "Testing" below). Code that reads or writes raw data files uses the classes here and never needs to know which format a file is in.
 
 ## Reading
 
@@ -76,6 +76,8 @@ Override `WriterBackend::discard_record()` if the format can remove a partly wri
 - `add_timestamp_suffix()`: the unique timestamp suffix.
 - `get_free_space()`: free disk space for a path.
 
-## Testing with the in-memory backend
+## Testing with the in-memory test double
 
-`rawdatafilelibs/InMemoryBackend.hpp` keeps files in process memory. Use it directly (`InMemoryReaderBackend` / `InMemoryWriterBackend`), or through the plugin with files named `*.rdfmem`. `InMemoryStore::instance()` gives access to the stored files.
+`rawdatafilelibs/InMemoryBackend.hpp` is a backend that keeps "files" in process memory. It is not a file format: nothing reaches disk, and the store is gone when the process ends. It exists so that code reading or writing raw data files can be unit-tested without disk or HDF5. It is keyed by path because what the generic layer does is file lifecycle (in-progress names, never replacing a file, recovery), and a double has to honour paths to exercise that.
+
+Use it directly (`InMemoryReaderBackend` / `InMemoryWriterBackend`, passed to the reader and writer constructors), or, in a work area, through the test plugin `rdfmem` with files named `*.rdfmem`. The plugin is built from `test/plugins/` and installed with the package's test libraries (`test/lib64`, which `dbt-workarea-env` adds to `CET_PLUGIN_PATH`), not with its plugins, so it is not offered as a format outside tests. `InMemoryStore::instance()` gives access to the stored files; clear it between tests.
